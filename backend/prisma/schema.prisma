@@ -1,0 +1,295 @@
+// This is your Prisma schema file
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Usuários do sistema ────────────────────────────────────────────────────
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      String   @default("admin") // admin | operator
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  campaigns         Campaign[]
+  messages          ScheduledMessage[]
+  sequences         MessageSequence[]
+}
+
+// ─── Contatos / Alunos ──────────────────────────────────────────────────────
+model Contact {
+  id            String   @id @default(uuid())
+  name          String
+  phone         String   @unique  // formato: 5511999999999
+  email         String?
+  status        String   @default("active") // active | blocked | inactive
+  tags          String   @default("[]") // JSON array de tags
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  student       Student?
+  messages      Message[]
+  groupMembers  GroupMember[]
+  campaignSends CampaignSend[]
+}
+
+// ─── Alunos (extensão de Contact para empresa de treinamentos) ──────────────
+model Student {
+  id              String   @id @default(uuid())
+  contactId       String   @unique
+  contact         Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  // Dados pessoais
+  cpf             String?  @unique
+  rg              String?
+  birthDate       DateTime?
+  address         String?
+  city            String?
+  state           String?
+
+  // Dados do RG capturado via foto/OCR
+  rgPhotoPath     String?
+  rgDataExtracted String?  // JSON com dados extraídos via OCR
+
+  // Dados do curso
+  courseId        String?
+  course          Course?  @relation(fields: [courseId], references: [id])
+  enrolledAt      DateTime @default(now())
+  status          String   @default("active") // active | completed | suspended
+  expiresAt       DateTime?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// ─── Cursos / Treinamentos ──────────────────────────────────────────────────
+model Course {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  duration    Int?     // em horas
+  price       Float?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  students    Student[]
+}
+
+// ─── Grupos do WhatsApp ─────────────────────────────────────────────────────
+model WhatsAppGroup {
+  id          String   @id @default(uuid())
+  groupId     String   @unique  // ID do grupo no WhatsApp (ex: 1234567890@g.us)
+  name        String
+  description String?
+  members     Int      @default(0)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  groupMembers  GroupMember[]
+  campaignSends CampaignSend[]
+}
+
+model GroupMember {
+  id        String        @id @default(uuid())
+  groupId   String
+  group     WhatsAppGroup @relation(fields: [groupId], references: [id])
+  contactId String
+  contact   Contact       @relation(fields: [contactId], references: [id])
+  addedAt   DateTime      @default(now())
+
+  @@unique([groupId, contactId])
+}
+
+// ─── Mensagens (histórico) ──────────────────────────────────────────────────
+model Message {
+  id          String   @id @default(uuid())
+  contactId   String
+  contact     Contact  @relation(fields: [contactId], references: [id])
+  direction   String   // inbound | outbound
+  type        String   @default("text") // text | image | audio | video | document | sticker
+  body        String?
+  mediaPath   String?
+  mediaUrl    String?
+  status      String   @default("sent") // sent | delivered | read | failed
+  whatsappId  String?
+  receivedAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  // Dados de RG recebidos via mensagem
+  isRgData    Boolean  @default(false)
+  rgProcessed Boolean  @default(false)
+}
+
+// ─── Templates de Mensagem ──────────────────────────────────────────────────
+model MessageTemplate {
+  id        String   @id @default(uuid())
+  name      String
+  type      String   @default("text") // text | image | audio | video | document
+  body      String?
+  mediaPath String?
+  mediaUrl  String?
+  variables String   @default("[]") // JSON: ["nome", "curso", "data"]
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  campaigns Campaign[]
+}
+
+// ─── Campanhas de Disparo ────────────────────────────────────────────────────
+model Campaign {
+  id            String   @id @default(uuid())
+  name          String
+  description   String?
+  status        String   @default("draft") // draft | scheduled | running | completed | cancelled
+  templateId    String?
+  template      MessageTemplate? @relation(fields: [templateId], references: [id])
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+
+  // Segmentação
+  targetType    String   @default("contacts") // contacts | groups | all | tagged
+  targetTags    String   @default("[]")       // JSON array de tags
+  targetGroups  String   @default("[]")       // JSON array de groupIds
+
+  // Configuração de envio
+  scheduledAt   DateTime?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  sendInterval  Int      @default(3000)  // ms entre envios (evitar bloqueio)
+  totalSent     Int      @default(0)
+  totalFailed   Int      @default(0)
+  totalPending  Int      @default(0)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sends         CampaignSend[]
+  scheduledMsgs ScheduledMessage[]
+}
+
+model CampaignSend {
+  id          String         @id @default(uuid())
+  campaignId  String
+  campaign    Campaign       @relation(fields: [campaignId], references: [id])
+  contactId   String?
+  contact     Contact?       @relation(fields: [contactId], references: [id])
+  groupId     String?
+  group       WhatsAppGroup? @relation(fields: [groupId], references: [id])
+  status      String         @default("pending") // pending | sent | delivered | failed
+  sentAt      DateTime?
+  error       String?
+  createdAt   DateTime       @default(now())
+}
+
+// ─── Mensagens Agendadas ────────────────────────────────────────────────────
+model ScheduledMessage {
+  id           String    @id @default(uuid())
+  campaignId   String?
+  campaign     Campaign? @relation(fields: [campaignId], references: [id])
+  userId       String
+  user         User      @relation(fields: [userId], references: [id])
+
+  // Destino
+  targetType   String    // contact | group | all_students | tagged
+  targetId     String?   // contactId ou groupId específico
+  targetTags   String    @default("[]")
+
+  // Conteúdo
+  type         String    @default("text") // text | image | audio | video | document
+  body         String?
+  mediaPath    String?
+  mediaUrl     String?
+
+  // Agendamento
+  scheduledAt  DateTime
+  cronExpr     String?   // para mensagens recorrentes
+  recurring    Boolean   @default(false)
+  status       String    @default("pending") // pending | sent | failed | cancelled
+
+  sentAt       DateTime?
+  error        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+// ─── Sequências de Mensagens (múltiplas mensagens seguidas) ──────────────────
+model MessageSequence {
+  id            String    @id @default(uuid())
+  name          String
+  description   String?
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+
+  // Destino
+  targetType    String    // contact | group | all_students | tagged
+  targetId      String?   // contactId ou groupId específico
+  targetTags    String    @default("[]")
+
+  // Agendamento
+  scheduledAt   DateTime
+  status        String    @default("pending") // pending | scheduled | running | completed | cancelled
+
+  // Controle
+  totalSent     Int       @default(0)
+  totalFailed   Int       @default(0)
+  startedAt     DateTime?
+  completedAt   DateTime?
+
+  messages      SequenceMessage[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([scheduledAt])
+}
+
+model SequenceMessage {
+  id            String          @id @default(uuid())
+  sequenceId    String
+  sequence      MessageSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+
+  // Ordem na sequência
+  order         Int
+
+  // Tipo de mensagem
+  type          String    // text | image | audio | video | document
+  body          String?   // texto da mensagem
+  mediaPath     String?   // caminho do arquivo de mídia
+  caption       String?   // legenda para imagens
+
+  // Timing
+  delayBefore   Int       @default(2000) // ms de espera antes de enviar esta mensagem
+  messageDelay  Int       @default(3000) // ms de atraso até a próxima mensagem da sequência
+
+  // Repetição
+  repeatDays    String    @default("[]") // JSON: ["seg", "ter", "qua", "qui", "sex", "sab", "dom"]
+  repeatTimes   String    @default("[]") // JSON: ["09:00", "14:00", "18:30"]
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([sequenceId, order])
+  @@index([sequenceId])
+}
+
+// ─── Configurações do WhatsApp ──────────────────────────────────────────────
+model WhatsAppSession {
+  id          String   @id @default("default")
+  status      String   @default("disconnected") // disconnected | qr_ready | connected
+  phone       String?
+  qrCode      String?
+  sessionData String?  // dados da sessão criptografados
+  connectedAt DateTime?
+  updatedAt   DateTime @updatedAt
+}
