@@ -4,7 +4,7 @@ nixPkgs = [
   "nss",
   "freetype",
   "harfbuzz",
-  "ca-certificates",
+  "cacert",
   "liberation_ttf",
   "glib",
   "dbus",
