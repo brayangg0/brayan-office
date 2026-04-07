@@ -4,6 +4,6 @@
   "description": "Brayan Office - CRM WhatsApp",
   "scripts": {
     "build": "cd frontend && npm install && npm run build && cd ../backend && npm install && npx prisma generate && npm run build",
-    "start": "cd backend && npm prisma db push && node dist/index.js"
+    "start": "cd backend && npx prisma db push && node dist/index.js"
   }
 }
