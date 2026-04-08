@@ -17,7 +17,6 @@ nixPkgs = [
   "xorg.libXext",
   "xorg.libXfixes",
   "xorg.libXrandr",
-  "libxcb",
   "expat",
   "fontconfig",
   "mesa"
