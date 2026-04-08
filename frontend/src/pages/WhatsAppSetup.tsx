@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getWhatsAppStatus, getQrCode, syncGroups, restartWhatsApp, sendMessage, getGroups } from '../services/api';
+import { getWhatsAppStatus, getQrCode, syncGroups, restartWhatsApp, logoutWhatsApp, sendMessage, getGroups, toggleWhatsAppGroup } from '../services/api';
 import { io } from 'socket.io-client';
 import toast from 'react-hot-toast';
-import { Wifi, WifiOff, RefreshCw, Send, Users, Smartphone, RefreshCcw } from 'lucide-react';
+import { Wifi, WifiOff, RefreshCw, Send, Users, Smartphone, RefreshCcw, LogOut } from 'lucide-react';
 
 const socket = io({ 
   path: '/socket.io',
@@ -83,6 +83,15 @@ export default function WhatsAppSetup() {
     }
   });
 
+  const logoutMut = useMutation({
+    mutationFn: logoutWhatsApp,
+    onSuccess: () => {
+      setQrImage(null);
+      setLoadingQr(true);
+      toast.success('Desconectado com sucesso! Aguarde novo QR Code.');
+    }
+  });
+
   const reloadQrMut = useMutation({
     mutationFn: () => getQrCode(),
     onSuccess: (d) => {
@@ -97,6 +106,13 @@ export default function WhatsAppSetup() {
     onSuccess: (d) => {
       qc.invalidateQueries({ queryKey: ['groups'] });
       toast.success(d.message);
+    }
+  });
+
+  const toggleMut = useMutation({
+    mutationFn: toggleWhatsAppGroup,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['groups'] });
     }
   });
 
@@ -162,6 +178,17 @@ export default function WhatsAppSetup() {
               <RefreshCw size={14} className={restartMut.isPending ? 'animate-spin' : ''} />
               <span className="text-sm">Reiniciar</span>
             </button>
+            {isConnected && (
+              <button
+                onClick={() => logoutMut.mutate()}
+                className="btn-secondary flex items-center gap-2 py-2 px-3 text-red-600 hover:bg-red-50 border-red-200"
+                disabled={logoutMut.isPending}
+                title="Sair desta conta do WhatsApp"
+              >
+                <LogOut size={14} className={logoutMut.isPending ? 'animate-spin' : ''} />
+                <span className="text-sm">Sair</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -211,9 +238,18 @@ export default function WhatsAppSetup() {
         {groups && groups.length > 0 ? (
           <div className="grid grid-cols-2 gap-3">
             {groups.map((g: any) => (
-              <div key={g.id} className="p-3 border border-gray-100 rounded-lg">
-                <p className="font-medium text-sm">{g.name}</p>
-                <p className="text-xs text-gray-400">{g.members} membros · ID: {g.groupId.split('@')[0]}</p>
+              <div key={g.id} className={`p-3 border border-gray-100 rounded-lg flex items-center justify-between transition-colors ${!g.active ? 'bg-gray-50 opacity-60 grayscale' : ''}`}>
+                <div>
+                  <p className="font-medium text-sm flex items-center gap-2">
+                    {g.name}
+                    {!g.active && <span className="text-[10px] px-1.5 py-0.5 bg-gray-200 text-gray-500 rounded">Inativo</span>}
+                  </p>
+                  <p className="text-xs text-gray-400">{g.members} membros · ID: {g.groupId.split('@')[0]}</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2" title={g.active ? "Desativar grupo (não aparecerá para envios)" : "Ativar grupo"} onClick={(e) => e.stopPropagation()}>
+                  <input type="checkbox" className="sr-only peer" checked={g.active} onChange={() => toggleMut.mutate(g.id)} disabled={toggleMut.isPending} />
+                  <div className="w-9 h-5 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-[100%] peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-whatsapp"></div>
+                </label>
               </div>
             ))}
           </div>
@@ -259,7 +295,7 @@ export default function WhatsAppSetup() {
                 <label className="label">Arquivo ({sendForm.type})</label>
                 <input type="file" className="input" accept={sendForm.type === 'audio' ? 'audio/*' : sendForm.type === 'video' ? 'video/*' : 'image/*'}
                   onChange={(e) => setFile(e.target.files?.[0] || null)} />
-                <input className="input mt-2" placeholder="Legenda (opcional)" value={sendForm.body}
+                <textarea className="input mt-2 resize-none" rows={3} placeholder="Legenda (opcional) - Pode pular linhas normalmente" value={sendForm.body}
                   onChange={(e) => setSendForm({ ...sendForm, body: e.target.value })} />
               </div>
             )}

@@ -103,7 +103,10 @@ export const getQrCode = () => api.get('/whatsapp/qr').then((r) => r.data);
 export const sendMessage = (fd: FormData) => api.post('/whatsapp/send', fd).then((r) => r.data);
 export const getGroups = () => api.get('/whatsapp/groups').then((r) => r.data);
 export const syncGroups = () => api.post('/whatsapp/groups/sync').then((r) => r.data);
+export const syncChats = () => api.post('/whatsapp/chats/sync').then((r) => r.data);
+export const toggleWhatsAppGroup = (id: string) => api.post(`/whatsapp/groups/${id}/toggle`).then((r) => r.data);
 export const restartWhatsApp = () => api.post('/whatsapp/restart').then((r) => r.data);
+export const logoutWhatsApp = () => api.post('/whatsapp/logout').then((r) => r.data);
 
 // Automação - AutoResponse
 export const getAutoResponseStatus = () => api.get('/automation/autoresponse/status').then((r) => r.data);

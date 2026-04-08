@@ -16,7 +16,8 @@ const ALL_ALLOWED = Object.values(ALLOWED_MIME).flat();
 function createStorage(folder: string) {
   return multer.diskStorage({
     destination: (_req, _file, cb) => {
-      const uploadPath = path.join(process.cwd(), 'uploads', folder);
+      const baseUploads = process.env.UPLOADS_PATH || path.join(process.cwd(), 'uploads');
+      const uploadPath = path.join(baseUploads, folder);
       
       // Criar pasta se não existir
       try {

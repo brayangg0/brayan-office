@@ -193,7 +193,7 @@ export default function Schedule() {
                   ) : (
                     <select className="input" value={form.targetId} onChange={(e) => setForm({ ...form, targetId: e.target.value })} required>
                       <option value="">Selecione um grupo...</option>
-                      {groups?.map((g: any) => <option key={g.id} value={g.id}>{g.name} ({g.members} membros)</option>)}
+                      {groups?.filter((g: any) => g.active).map((g: any) => <option key={g.id} value={g.id}>{g.name} ({g.members} membros)</option>)}
                     </select>
                   )}
                 </div>
@@ -257,7 +257,7 @@ export default function Schedule() {
                     }}
                     required
                   />
-                  <input className="input mt-2" placeholder="Legenda (opcional)" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} />
+                  <textarea className="input mt-2 resize-none" rows={3} placeholder="Legenda (opcional) - Pode pular linhas normalmente" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} />
                 </div>
               )}
 

@@ -390,7 +390,7 @@ export default function Automation() {
                 <div>
                   <label className="label">Selecione grupos</label>
                   <div className="max-h-32 overflow-y-auto border rounded p-2 space-y-1">
-                    {groups && groups.map((g: any) => (
+                    {groups && groups.filter((g: any) => g.active).map((g: any) => (
                       <label key={g.groupId} className="flex items-center gap-2 text-sm">
                         <input type="checkbox" />
                         <span>{g.name} ({g.members} membros)</span>

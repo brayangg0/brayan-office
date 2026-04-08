@@ -81,4 +81,24 @@ router.post('/groups/sync', async (_req, res) => {
   res.json({ message: `${groups.length} grupos sincronizados`, groups });
 });
 
+// POST /api/whatsapp/chats/sync - Sincroniza contatos e mensagens antigas
+router.post('/chats/sync', async (_req, res) => {
+  const result = await whatsappService.syncContactsAndChats();
+  if (result?.error) return res.status(400).json(result);
+  res.json(result);
+});
+
+// POST /api/whatsapp/groups/:id/toggle - Alterna disponibilidade do grupo
+router.post('/groups/:id/toggle', async (req, res) => {
+  const { id } = req.params;
+  const group = await prisma.whatsAppGroup.findUnique({ where: { id } });
+  if (!group) return res.status(404).json({ error: 'Grupo não encontrado' });
+  
+  const updated = await prisma.whatsAppGroup.update({
+    where: { id },
+    data: { active: !group.active }
+  });
+  res.json({ message: 'Status atualizado com sucesso', active: updated.active });
+});
+
 export default router;

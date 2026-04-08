@@ -65,6 +65,7 @@ JWT_SECRET=coloque_uma_senha_muito_longa_e_aleatoria_aqui_minimo_32_chars
 FRONTEND_URL=https://SEU-PROJETO.railway.app
 CHROMIUM_PATH=/usr/bin/chromium
 SESSION_PATH=/app/data/.wwebjs_auth
+UPLOADS_PATH=/app/data/uploads
 ```
 
 > ⚠️ **IMPORTANTE:** Troque `SEU-PROJETO.railway.app` pelo domínio real gerado pelo Railway depois que o deploy terminar. Você pode copiar na aba **Settings → Domains**.
@@ -119,7 +120,7 @@ O build leva em torno de **3 a 8 minutos** na primeira vez.
 - [ ] Código enviado para o GitHub
 - [ ] Projeto criado no Railway conectado ao GitHub
 - [ ] Volume criado com mount path `/app/data`
-- [ ] Variáveis de ambiente configuradas (todas as 7)
+- [ ] Variáveis de ambiente configuradas (todas as 8)
 - [ ] Domínio público gerado
 - [ ] `FRONTEND_URL` atualizado com o domínio real
 - [ ] Build concluído com sucesso (logs verdes)

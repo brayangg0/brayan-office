@@ -12,6 +12,7 @@ class WhatsAppService {
   private client: Client | null = null;
   private isReady = false;
   private sessionPath = process.env.SESSION_PATH || path.join(process.cwd(), '.wwebjs_auth');
+  private baseUploads = process.env.UPLOADS_PATH || path.join(process.cwd(), 'uploads');
 
   async initialize() {
     console.log('[WhatsApp] Inicializando cliente...');
@@ -162,7 +163,7 @@ class WhatsAppService {
     }
   }
 
-  private async persistMessage(msg: any) {
+  private async persistMessage(msg: any, skipMedia: boolean = false) {
     try {
       const whatsappId = msg.id._serialized;
       const existing = await prisma.message.findFirst({ where: { whatsappId } });
@@ -184,12 +185,12 @@ class WhatsAppService {
       let mediaPath: string | null = null;
       let type = msg.type as string;
 
-      if (isMedia) {
+      if (isMedia && !skipMedia) {
         const media = await msg.downloadMedia();
         if (media) {
           const ext = media.mimetype.split('/')[1]?.split(';')[0] || 'bin';
           const filename = `${Date.now()}_${contact.id}.${ext}`;
-          const dest = path.join(process.cwd(), 'uploads', 'media', filename);
+          const dest = path.join(this.baseUploads, 'media', filename);
           if (!fs.existsSync(path.dirname(dest))) fs.mkdirSync(path.dirname(dest), { recursive: true });
           fs.writeFileSync(dest, Buffer.from(media.data, 'base64'));
           mediaPath = `/uploads/media/${filename}`;
@@ -223,13 +224,14 @@ class WhatsAppService {
   private async processRgDocument(messageId: string, mediaPath: string, contactId: string) {
     try {
       const { ocrService } = await import('./ocr.service');
-      const fullPath = path.join(process.cwd(), mediaPath.replace('/uploads', 'uploads'));
+      const fullPath = path.join(this.baseUploads, mediaPath.replace('/uploads/', ''));
       const result = await ocrService.extractRgData(fullPath);
 
       await prisma.message.update({ where: { id: messageId }, data: { rgProcessed: true } });
 
       // Copia foto para pasta de RG
-      const dest = path.join(process.cwd(), 'uploads', 'rg', path.basename(fullPath));
+      const dest = path.join(this.baseUploads, 'rg', path.basename(fullPath));
+      if (!fs.existsSync(path.dirname(dest))) fs.mkdirSync(path.dirname(dest), { recursive: true });
       fs.copyFileSync(fullPath, dest);
 
       // Atualiza dados do aluno se existir
@@ -244,6 +246,49 @@ class WhatsAppService {
       ioRef?.emit('rg:processed', { contactId, data: result });
     } catch (err) {
       console.error('[OCR] Erro ao processar RG:', err);
+    }
+  }
+
+  // ─── Sincronização de Chats ──────────────────────────────────────────────
+  async syncContactsAndChats() {
+    if (!this.client || !this.getStatus().isReady) return { error: 'WhatsApp não está conectado' };
+    try {
+      console.log('[WhatsApp] Iniciando sincronização de conversas... (Isso pode levar alguns segundos)');
+      const chats = await this.client.getChats();
+      let syncedChats = 0;
+      let syncedMessages = 0;
+
+      // Pega os contatos privados mais recentes (últimas interações)
+      const recentChats = chats.filter((c: any) => !c.isGroup).slice(0, 30);
+
+      for (const chat of recentChats) {
+        try {
+          const phone = chat.id.user;
+          let contact = await prisma.contact.findUnique({ where: { phone } });
+          if (!contact) {
+            const waContact = await this.client.getContactById(chat.id._serialized);
+            contact = await prisma.contact.create({
+              data: { name: waContact.pushname || waContact.name || chat.name || phone, phone },
+            });
+          }
+
+          // Busca as últimas 15 mensagens do chat
+          const messages = await chat.fetchMessages({ limit: 15 });
+          for (const msg of messages) {
+            const isNew = await this.persistMessage(msg, true); // true = Pula download de arquivos antigos
+            if (isNew) syncedMessages++;
+          }
+          syncedChats++;
+        } catch (err) {
+          console.error(`[WhatsApp] Erro ao sincronizar chat de ${chat.name}:`, err);
+        }
+      }
+      
+      console.log(`[WhatsApp] Sincronização concluída: ${syncedChats} chats e ${syncedMessages} mensagens.`);
+      return { message: `${syncedChats} contatos e ${syncedMessages} mensagens antigas foram importadas!`, syncedChats, syncedMessages };
+    } catch (error) {
+      console.error('[WhatsApp] Erro na sincronização:', error);
+      return { error: 'Falha ao sincronizar conversas' };
     }
   }
 
@@ -327,8 +372,8 @@ class WhatsAppService {
       for (const group of groups) {
         await prisma.whatsAppGroup.upsert({
           where: { groupId: group.id._serialized },
-          update: { name: group.name, members: group.participants.length, active: !group.archived },
-          create: { groupId: group.id._serialized, name: group.name, members: group.participants.length },
+          update: { name: group.name, members: group.participants.length },
+          create: { groupId: group.id._serialized, name: group.name, members: group.participants.length, active: !group.archived },
         });
       }
 
@@ -349,10 +394,32 @@ class WhatsAppService {
   getStatus() { return { isReady: this.isReady }; }
 
   async logout() {
-    if (this.client) {
-      await this.client.logout();
-      this.isReady = false;
+    console.log('[WhatsApp] Desconectando e limpando sessão...');
+    try {
+      if (this.client) {
+        await this.client.logout();
+        await this.client.destroy();
+      }
+    } catch(err) {
+      console.error('[WhatsApp] Erro remoto ao desconectar:', err);
     }
+    this.isReady = false;
+    this.client = null;
+
+    if (fs.existsSync(this.sessionPath)) {
+      try {
+        fs.rmSync(this.sessionPath, { recursive: true, force: true });
+      } catch(e) {
+        console.error('[WhatsApp] Erro ao deletar pasta auth:', e);
+      }
+    }
+
+    await prisma.whatsAppSession.update({
+      where: { id: 'default' },
+      data: { status: 'disconnected', phone: null, qrCode: null, connectedAt: null }
+    });
+
+    setTimeout(() => this.initialize(), 1000);
   }
 
   async destroy() {

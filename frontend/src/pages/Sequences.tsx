@@ -315,7 +315,7 @@ export const Sequences: React.FC = () => {
                 className="p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Selecione um grupo</option>
-                {groups.map((g: any) => (
+                {groups.filter((g: any) => g.active).map((g: any) => (
                   <option key={g.id} value={g.id}>
                     {g.name}
                   </option>
@@ -446,12 +446,12 @@ export const Sequences: React.FC = () => {
                     {msg.mediaPath && (
                       <p className="text-xs text-green-600 mb-2">✅ Arquivo: {msg.mediaPath}</p>
                     )}
-                    <input
-                      type="text"
-                      placeholder="Legenda (opcional)"
+                    <textarea
+                      placeholder="Legenda (opcional) - Pode pular linhas normalmente"
                       value={msg.caption || ''}
                       onChange={(e) => updateMessage(idx, 'caption', e.target.value)}
-                      className="w-full p-2 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full p-2 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                      rows={3}
                     />
                   </>
                 )}

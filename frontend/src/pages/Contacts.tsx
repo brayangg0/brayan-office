@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getContacts, getContact, createContact, updateContact, deleteContact, importContactsCsv, sendMessage } from '../services/api';
+import { getContacts, getContact, createContact, updateContact, deleteContact, importContactsCsv, sendMessage, syncChats } from '../services/api';
 import toast from 'react-hot-toast';
-import { Plus, Search, Pencil, Trash2, UserCheck, Phone, Upload, Download, MessageCircle, X, Send, MessageSquare } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, UserCheck, Phone, Upload, Download, MessageCircle, X, Send, RefreshCw } from 'lucide-react';
 import { socket } from '../components/Layout';
 
 export default function Contacts() {
@@ -102,6 +102,15 @@ export default function Contacts() {
     onError: (e: any) => toast.error(e.response?.data?.error || 'Erro ao importar'),
   });
 
+  const syncChatsMut = useMutation({
+    mutationFn: syncChats,
+    onSuccess: (data: any) => {
+      qc.invalidateQueries({ queryKey: ['contacts'] });
+      toast.success(data.message || 'Chats sincronizados!');
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Erro ao sincronizar conversas'),
+  });
+
   const openModal = (contact?: any) => {
     setForm(contact
       ? { name: contact.name, phone: contact.phone, email: contact.email || '', tags: JSON.parse(contact.tags || '[]').join(', '), notes: contact.notes || '' }
@@ -154,6 +163,10 @@ export default function Contacts() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Contatos</h1>
         <div className="flex gap-2">
+          <button onClick={() => syncChatsMut.mutate()} disabled={syncChatsMut.isPending} className="btn-secondary flex items-center gap-2">
+             <RefreshCw size={16} className={syncChatsMut.isPending ? 'animate-spin' : ''} />
+             {syncChatsMut.isPending ? 'Sincronizando...' : 'Sincronizar WhatsApp'}
+          </button>
           <button onClick={() => setImportModal(true)} className="btn-secondary flex items-center gap-2">
             <Upload size={16} /> Importar CSV
           </button>
