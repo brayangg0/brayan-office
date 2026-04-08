@@ -4,7 +4,6 @@ nixPkgs = [
   "nss",
   "freetype",
   "harfbuzz",
-  "cacert",
   "liberation_ttf",
   "glib",
   "dbus",
@@ -21,18 +20,3 @@ nixPkgs = [
   "fontconfig",
   "mesa"
 ]
-
-[phases.install]
-cmds = [
-  "cd frontend && npm install",
-  "cd backend && npm install"
-]
-
-[phases.build]
-cmds = [
-  "cd frontend && npm run build",
-  "cd backend && npx prisma generate && npm run build"
-]
-
-[start]
-cmd = "cd backend && npx prisma db push && node dist/index.js"
