@@ -188,7 +188,8 @@ router.delete('/:id', async (req, res) => {
 // POST /api/sequences/:id/send - Enviar sequência agora (sem esperar horário)
 router.post('/:id/send', async (req, res) => {
   try {
-    await sequenceService.sendSequenceNow(req.params.id);
+    // force=true: permite reenviar mesmo que já esteja completed/cancelled
+    await sequenceService.sendSequenceNow(req.params.id, true);
     res.json({ message: 'Sequência enviada com sucesso' });
   } catch (err: any) {
     console.error('[Sequences] ❌ Erro ao enviar:', err.message);
