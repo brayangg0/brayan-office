@@ -42,26 +42,26 @@ export default function Campaigns() {
   });
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Campanhas</h1>
-        <button onClick={() => setModal(true)} className="btn-primary flex items-center gap-2"><Plus size={16} /> Nova Campanha</button>
+    <div className="p-4 md:p-6 space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <h1 className="text-xl md:text-2xl font-bold">Campanhas</h1>
+        <button onClick={() => setModal(true)} className="btn-primary flex items-center gap-2 self-start sm:self-auto"><Plus size={16} /> Nova Campanha</button>
       </div>
 
-      <div className="grid gap-4">
+      <div className="grid gap-3 md:gap-4">
         {data?.campaigns?.length === 0 && <div className="card text-center py-12 text-gray-400">Nenhuma campanha criada</div>}
         {data?.campaigns?.map((c: any) => {
           const cfg = statusConfig[c.status] || statusConfig.draft;
           const Icon = cfg.icon;
           return (
-            <div key={c.id} className="card">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-start gap-3">
-                  <div className="p-2 bg-purple-100 rounded-lg"><Megaphone size={20} className="text-purple-600" /></div>
-                  <div>
-                    <h3 className="font-semibold">{c.name}</h3>
-                    {c.description && <p className="text-sm text-gray-500">{c.description}</p>}
-                    <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
+            <div key={c.id} className="card !p-4 md:!p-6">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className="p-2 bg-purple-100 rounded-lg shrink-0"><Megaphone size={18} className="text-purple-600" /></div>
+                  <div className="min-w-0">
+                    <h3 className="font-semibold text-sm md:text-base">{c.name}</h3>
+                    {c.description && <p className="text-xs md:text-sm text-gray-500">{c.description}</p>}
+                    <div className="flex flex-wrap items-center gap-2 mt-1.5 text-xs text-gray-400">
                       <span>Template: {c.template?.name || 'Nenhum'}</span>
                       <span>Destino: {c.targetType}</span>
                       {c.scheduledAt && <span>Agendada: {format(new Date(c.scheduledAt), 'dd/MM/yyyy HH:mm')}</span>}
@@ -72,16 +72,16 @@ export default function Campaigns() {
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
                   <span className={`badge ${cfg.color} flex items-center gap-1`}><Icon size={12} />{cfg.label}</span>
                   {c.status === 'draft' && c.template && (
                     <>
                       <button onClick={() => { if (confirm('Disparar agora?')) sendMut.mutate(c.id); }}
-                        className="btn-primary text-xs py-1.5 flex items-center gap-1" disabled={sendMut.isPending}>
+                        className="btn-primary text-xs py-2 px-3 flex items-center gap-1" disabled={sendMut.isPending}>
                         <Send size={12} /> Disparar
                       </button>
                       <button onClick={() => setScheduleModal({ open: true, id: c.id })}
-                        className="btn-secondary text-xs py-1.5 flex items-center gap-1">
+                        className="btn-secondary text-xs py-2 px-3 flex items-center gap-1">
                         <Calendar size={12} /> Agendar
                       </button>
                     </>
@@ -95,10 +95,10 @@ export default function Campaigns() {
 
       {/* Modal Nova Campanha */}
       {modal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+          <div className="bg-white rounded-t-2xl sm:rounded-xl shadow-xl w-full sm:max-w-md">
             <div className="p-4 border-b font-semibold">Nova Campanha</div>
-            <form onSubmit={(e) => { e.preventDefault(); createMut.mutate({ ...form, sendInterval: parseInt(form.sendInterval) }); }} className="p-4 space-y-3">
+            <form onSubmit={(e) => { e.preventDefault(); createMut.mutate({ ...form, sendInterval: parseInt(form.sendInterval) }); }} className="p-4 space-y-3 max-h-[80vh] overflow-y-auto">
               <div><label className="label">Nome *</label><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></div>
               <div><label className="label">Descrição</label><input className="input" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
               <div>
@@ -133,8 +133,8 @@ export default function Campaigns() {
 
       {/* Modal Agendar */}
       {scheduleModal.open && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm">
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+          <div className="bg-white rounded-t-2xl sm:rounded-xl shadow-xl w-full sm:max-w-sm">
             <div className="p-4 border-b font-semibold">Agendar Campanha</div>
             <div className="p-4 space-y-3">
               <div><label className="label">Data e Hora</label><input className="input" type="datetime-local" value={scheduleDate} onChange={(e) => setScheduleDate(e.target.value)} /></div>

@@ -27,17 +27,17 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 to-gray-800">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 to-gray-800 p-4">
       <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-whatsapp rounded-2xl mb-4 shadow-lg">
-            <MessageSquare size={32} className="text-white" />
+        <div className="text-center mb-6 md:mb-8">
+          <div className="inline-flex items-center justify-center w-14 h-14 md:w-16 md:h-16 bg-whatsapp rounded-2xl mb-3 md:mb-4 shadow-lg">
+            <MessageSquare size={28} className="text-white md:w-8 md:h-8" />
           </div>
-          <h1 className="text-2xl font-bold text-white">Brayan Office</h1>
-          <p className="text-gray-400 mt-1">CRM WhatsApp</p>
+          <h1 className="text-xl md:text-2xl font-bold text-white">Brayan Office</h1>
+          <p className="text-gray-400 mt-1 text-sm">CRM WhatsApp</p>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-xl p-8">
+        <div className="bg-white rounded-2xl shadow-xl p-6 md:p-8">
           <div className="flex rounded-lg border border-gray-200 mb-6 overflow-hidden">
             {(['login', 'register'] as const).map((m) => (
               <button key={m} onClick={() => setMode(m)}

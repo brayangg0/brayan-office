@@ -5,11 +5,11 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recha
 
 function StatCard({ label, value, icon: Icon, color }: { label: string; value: number; icon: any; color: string }) {
   return (
-    <div className="card flex items-center gap-4">
-      <div className={`p-3 rounded-xl ${color}`}><Icon size={24} className="text-white" /></div>
+    <div className="card flex items-center gap-3 p-4 md:p-6">
+      <div className={`p-2 md:p-3 rounded-xl ${color} shrink-0`}><Icon size={20} className="text-white md:w-6 md:h-6" /></div>
       <div>
-        <p className="text-2xl font-bold">{value.toLocaleString()}</p>
-        <p className="text-sm text-gray-500">{label}</p>
+        <p className="text-xl md:text-2xl font-bold">{value.toLocaleString()}</p>
+        <p className="text-xs md:text-sm text-gray-500">{label}</p>
       </div>
     </div>
   );
@@ -30,39 +30,39 @@ export default function Dashboard() {
   })) || [];
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-4 md:p-6 space-y-4 md:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-500 text-sm">Visão geral do sistema</p>
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Dashboard</h1>
+          <p className="text-gray-500 text-xs md:text-sm">Visão geral do sistema</p>
         </div>
-        <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium ${
+        <div className={`flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs md:text-sm font-medium self-start sm:self-auto ${
           waStatus?.status === 'connected' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
         }`}>
-          {waStatus?.status === 'connected' ? <Wifi size={16} /> : <WifiOff size={16} />}
+          {waStatus?.status === 'connected' ? <Wifi size={14} /> : <WifiOff size={14} />}
           {waStatus?.status === 'connected' ? `WhatsApp: ${waStatus.phone}` : 'WhatsApp desconectado'}
         </div>
       </div>
 
       {/* Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         <StatCard label="Contatos" value={contactsData?.total || 0} icon={Users} color="bg-blue-500" />
         <StatCard label="Alunos" value={studentsData?.total || 0} icon={GraduationCap} color="bg-whatsapp" />
         <StatCard label="Campanhas" value={campaignsData?.total || 0} icon={Megaphone} color="bg-purple-500" />
         <StatCard label="Agendamentos" value={schedules?.length || 0} icon={Calendar} color="bg-orange-500" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
         {/* Gráfico */}
-        <div className="card">
-          <h2 className="font-semibold mb-4 flex items-center gap-2">
-            <TrendingUp size={18} className="text-whatsapp" /> Campanhas Recentes
+        <div className="card !p-4 md:!p-6">
+          <h2 className="font-semibold mb-3 md:mb-4 flex items-center gap-2 text-sm md:text-base">
+            <TrendingUp size={16} className="text-whatsapp md:w-[18px] md:h-[18px]" /> Campanhas Recentes
           </h2>
           {chartData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
+            <ResponsiveContainer width="100%" height={200}>
               <BarChart data={chartData}>
-                <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} />
+                <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                <YAxis tick={{ fontSize: 10 }} />
                 <Tooltip />
                 <Bar dataKey="enviados" fill="#25D366" radius={[4, 4, 0, 0]} name="Enviados" />
                 <Bar dataKey="falhas" fill="#ef4444" radius={[4, 4, 0, 0]} name="Falhas" />
@@ -74,19 +74,19 @@ export default function Dashboard() {
         </div>
 
         {/* Agendamentos pendentes */}
-        <div className="card">
-          <h2 className="font-semibold mb-4 flex items-center gap-2">
-            <Calendar size={18} className="text-whatsapp" /> Próximos Agendamentos
+        <div className="card !p-4 md:!p-6">
+          <h2 className="font-semibold mb-3 md:mb-4 flex items-center gap-2 text-sm md:text-base">
+            <Calendar size={16} className="text-whatsapp md:w-[18px] md:h-[18px]" /> Próximos Agendamentos
           </h2>
           {schedules && schedules.length > 0 ? (
-            <ul className="space-y-3">
+            <ul className="space-y-2 md:space-y-3">
               {schedules.slice(0, 5).map((s: any) => (
-                <li key={s.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <li key={s.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 p-2.5 md:p-3 bg-gray-50 rounded-lg">
                   <div>
-                    <p className="text-sm font-medium">{s.targetType}</p>
+                    <p className="text-xs md:text-sm font-medium">{s.targetType}</p>
                     <p className="text-xs text-gray-500">{s.body?.substring(0, 50) || `[${s.type}]`}</p>
                   </div>
-                  <span className="text-xs text-gray-500">
+                  <span className="text-xs text-gray-400 shrink-0">
                     {new Date(s.scheduledAt).toLocaleString('pt-BR')}
                   </span>
                 </li>
