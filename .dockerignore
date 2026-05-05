@@ -1,0 +1,39 @@
+# Version control
+.git
+.gitignore
+
+# Dependencies (installed fresh in each stage)
+node_modules
+**/node_modules
+
+# Build outputs (built fresh in each stage)
+dist
+**/dist
+frontend/dist
+
+# Development and local config
+.env
+.env.*
+!.env.example
+
+# WhatsApp session data (runtime, not build-time)
+backend/.wwebjs_auth
+backend/.wwebjs_cache
+
+# Uploaded media files
+backend/uploads
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Editor configs
+.vscode
+.idea
+
+# Documentation
+*.md
