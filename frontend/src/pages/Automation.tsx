@@ -112,16 +112,16 @@ export default function Automation() {
   });
 
   return (
-    <div className="p-6 space-y-6">
-      <h1 className="text-3xl font-bold flex items-center gap-2"><Zap size={28} /> Automação WhatsApp</h1>
+    <div className="p-4 md:p-6 space-y-4 md:space-y-6">
+      <h1 className="text-xl md:text-3xl font-bold flex items-center gap-2"><Zap size={22} className="md:w-7 md:h-7" /> Automação WhatsApp</h1>
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b">
+      <div className="flex gap-1 md:gap-2 border-b overflow-x-auto">
         {['responses', 'campaigns', 'messages'].map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab as any)}
-            className={`px-4 py-2 font-medium border-b-2 transition ${activeTab === tab
+            className={`px-3 py-2 md:px-4 font-medium border-b-2 transition text-xs md:text-sm whitespace-nowrap ${activeTab === tab
                 ? 'border-whatsapp text-whatsapp'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
@@ -135,10 +135,10 @@ export default function Automation() {
 
       {/* ─── AUTORRESPONSE ─── */}
       {activeTab === 'responses' && (
-        <div className="space-y-6">
-          <div className="card">
-            <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><MessageSquare size={20} /> Respostas Automáticas</h2>
-            <p className="text-gray-600 mb-4">O bot responderá automaticamente com base em palavras-chave da mensagem recebida.</p>
+        <div className="space-y-4 md:space-y-6">
+          <div className="card !p-4 md:!p-6">
+            <h2 className="text-lg md:text-xl font-bold mb-3 md:mb-4 flex items-center gap-2"><MessageSquare size={18} /> Respostas Automáticas</h2>
+            <p className="text-gray-600 mb-3 md:mb-4 text-sm md:text-base">O bot responderá automaticamente com base em palavras-chave da mensagem recebida.</p>
 
             {/* Criar / Editar template */}
             <div className="bg-gray-50 p-4 rounded-lg mb-6 space-y-3">
@@ -305,9 +305,9 @@ export default function Automation() {
           </div>
 
           {/* Palavras-chave exemplo */}
-          <div className="card bg-blue-50 border border-blue-200">
-            <h3 className="font-semibold text-blue-900 mb-3">💡 Palavras-chave que ativam respostas:</h3>
-            <div className="grid grid-cols-2 gap-3 text-sm text-blue-800">
+          <div className="card !p-4 md:!p-6 bg-blue-50 border border-blue-200">
+            <h3 className="font-semibold text-blue-900 mb-3 text-sm md:text-base">💡 Palavras-chave que ativam respostas:</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 md:gap-3 text-xs md:text-sm text-blue-800">
               <div>• "horário" / "hora" → Horário do curso</div>
               <div>• "duração" → Duração do curso</div>
               <div>• "preço" / "valor" → Preço</div>
@@ -321,13 +321,13 @@ export default function Automation() {
 
       {/* ─── CAMPANHAS AGENDADAS ─── */}
       {activeTab === 'campaigns' && (
-        <div className="space-y-6">
-          <div className="card">
-            <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><Clock size={20} /> Campanhas Agendadas</h2>
+        <div className="space-y-4 md:space-y-6">
+          <div className="card !p-4 md:!p-6">
+            <h2 className="text-lg md:text-xl font-bold mb-3 md:mb-4 flex items-center gap-2"><Clock size={18} /> Campanhas Agendadas</h2>
 
             {/* Criar nova campanha */}
-            <div className="bg-gray-50 p-4 rounded-lg mb-6 space-y-3">
-              <h3 className="font-semibold">Nova Campanha</h3>
+            <div className="bg-gray-50 p-4 rounded-lg mb-4 md:mb-6 space-y-3">
+              <h3 className="font-semibold text-sm md:text-base">Nova Campanha</h3>
               <input
                 type="text"
                 placeholder="Nome da campanha"
@@ -343,7 +343,7 @@ export default function Automation() {
                 onChange={(e) => setNewCampaign({ ...newCampaign, description: e.target.value })}
               />
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="label">Tipo de destino</label>
                   <select
@@ -459,9 +459,9 @@ export default function Automation() {
 
       {/* ─── MENSAGENS AGENDADAS ─── */}
       {activeTab === 'messages' && (
-        <div className="card">
-          <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><Clock size={20} /> Mensagens Agendadas</h2>
-          <p className="text-gray-600">Configure mensagens recorrentes ou agendadas para cursos e contatos específicos.</p>
+        <div className="card !p-4 md:!p-6">
+          <h2 className="text-lg md:text-xl font-bold mb-3 md:mb-4 flex items-center gap-2"><Clock size={18} /> Mensagens Agendadas</h2>
+          <p className="text-gray-600 text-sm md:text-base">Configure mensagens recorrentes ou agendadas para cursos e contatos específicos.</p>
 
           <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
             <p className="text-sm text-yellow-800">⏰ <strong>Exemplos de agendamento:</strong></p>

@@ -39,35 +39,35 @@ export default function Templates() {
   };
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="p-4 md:p-6 space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Templates de Mensagem</h1>
-          <p className="text-sm text-gray-500">Crie modelos reutilizáveis com texto, imagem, áudio ou vídeo</p>
+          <h1 className="text-xl md:text-2xl font-bold">Templates de Mensagem</h1>
+          <p className="text-xs md:text-sm text-gray-500">Crie modelos reutilizáveis com texto, imagem, áudio ou vídeo</p>
         </div>
-        <button onClick={() => { setForm({ name: '', type: 'text', body: '', variables: '' }); setFile(null); setModal({ open: true }); }} className="btn-primary flex items-center gap-2">
+        <button onClick={() => { setForm({ name: '', type: 'text', body: '', variables: '' }); setFile(null); setModal({ open: true }); }} className="btn-primary flex items-center gap-2 self-start sm:self-auto">
           <Plus size={16} /> Novo Template
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {templates?.length === 0 && <div className="col-span-3 card text-center py-12 text-gray-400">Nenhum template criado</div>}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
+        {templates?.length === 0 && <div className="col-span-full card text-center py-12 text-gray-400">Nenhum template criado</div>}
         {templates?.map((t: any) => {
           const Icon = typeIcons[t.type] || FileText;
           return (
-            <div key={t.id} className="card hover:shadow-md transition-shadow cursor-pointer" onClick={() => {
+            <div key={t.id} className="card hover:shadow-md transition-shadow cursor-pointer active:scale-[0.98]" onClick={() => {
               setForm({ name: t.name, type: t.type, body: t.body || '', variables: JSON.parse(t.variables || '[]').join(', ') });
               setFile(null);
               setModal({ open: true, template: t });
             }}>
               <div className="flex items-start gap-3">
-                <div className={`p-2 rounded-lg ${typeColors[t.type] || 'bg-gray-100 text-gray-600'}`}>
-                  <Icon size={20} />
+                <div className={`p-2 rounded-lg ${typeColors[t.type] || 'bg-gray-100 text-gray-600'} shrink-0`}>
+                  <Icon size={18} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold truncate">{t.name}</p>
+                  <p className="font-semibold truncate text-sm md:text-base">{t.name}</p>
                   <span className={`badge text-xs ${typeColors[t.type] || 'bg-gray-100 text-gray-600'}`}>{t.type}</span>
-                  {t.body && <p className="text-sm text-gray-500 mt-1 line-clamp-2">{t.body}</p>}
+                  {t.body && <p className="text-xs md:text-sm text-gray-500 mt-1 line-clamp-2">{t.body}</p>}
                   {t.mediaPath && <p className="text-xs text-blue-500 mt-1">📎 Mídia anexada</p>}
                 </div>
               </div>
@@ -77,10 +77,10 @@ export default function Templates() {
       </div>
 
       {modal.open && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+          <div className="bg-white rounded-t-2xl sm:rounded-xl shadow-xl w-full sm:max-w-lg">
             <div className="p-4 border-b font-semibold">{modal.template ? 'Editar Template' : 'Novo Template'}</div>
-            <form onSubmit={submit} className="p-4 space-y-3">
+            <form onSubmit={submit} className="p-4 space-y-3 max-h-[80vh] overflow-y-auto">
               <div><label className="label">Nome *</label><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></div>
               <div>
                 <label className="label">Tipo</label>

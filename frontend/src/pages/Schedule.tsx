@@ -66,13 +66,13 @@ export default function Schedule() {
   });
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="p-4 md:p-6 space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Agendamentos</h1>
-          <p className="text-sm text-gray-500">Programe envios automáticos de mensagens, áudios e vídeos</p>
+          <h1 className="text-xl md:text-2xl font-bold">Agendamentos</h1>
+          <p className="text-xs md:text-sm text-gray-500">Programe envios automáticos de mensagens, áudios e vídeos</p>
         </div>
-        <button onClick={() => setModal(true)} className="btn-primary flex items-center gap-2"><Plus size={16} /> Agendar Mensagem</button>
+        <button onClick={() => setModal(true)} className="btn-primary flex items-center gap-2 self-start sm:self-auto"><Plus size={16} /> Agendar Mensagem</button>
       </div>
 
       <div className="space-y-3">
@@ -80,16 +80,16 @@ export default function Schedule() {
         {schedules?.map((s: any) => {
           const Icon = statusIcon[s.status] || Clock;
           return (
-            <div key={s.id} className="card flex items-start justify-between gap-4">
-              <div className="flex items-start gap-3">
-                <div className={`p-2 rounded-lg ${statusColor[s.status] || 'bg-gray-100 text-gray-500'}`}><Calendar size={18} /></div>
-                <div>
-                  <div className="flex items-center gap-2">
+            <div key={s.id} className="card !p-4 flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className={`p-2 rounded-lg ${statusColor[s.status] || 'bg-gray-100 text-gray-500'} shrink-0`}><Calendar size={16} /></div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <p className="font-medium text-sm">{s.targetType === 'all_students' ? 'Todos os Alunos' : s.targetType === 'all' ? 'Todos' : s.targetType === 'group' ? 'Grupo' : 'Contato'}</p>
                     <span className={`badge text-xs ${statusColor[s.status]}`}><Icon size={10} className="inline mr-1" />{s.status}</span>
                     {s.recurring && <span className="badge bg-purple-100 text-purple-600 text-xs"><RefreshCw size={10} className="inline mr-1" />Recorrente</span>}
                   </div>
-                  <p className="text-sm text-gray-600 mt-1">{s.body?.substring(0, 80) || `[${s.type}]`}</p>
+                  <p className="text-xs md:text-sm text-gray-600 mt-1 line-clamp-2">{s.body?.substring(0, 80) || `[${s.type}]`}</p>
                   {s.cronExpr && <p className="text-xs text-gray-400 mt-1">Cron: {s.cronExpr}</p>}
                   <p className="text-xs text-gray-400 mt-1">
                     <Clock size={10} className="inline mr-1" />
@@ -111,8 +111,8 @@ export default function Schedule() {
 
       {/* Modal */}
       {modal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+          <div className="bg-white rounded-t-2xl sm:rounded-xl shadow-xl w-full sm:max-w-lg">
             <div className="p-4 border-b font-semibold">Agendar Mensagem</div>
             <form onSubmit={(e) => {
               e.preventDefault();
