@@ -30,9 +30,11 @@ RUN npm run build
 # ─── Stage 3: Production image ────────────────────────────────────────────────
 FROM node:20-slim AS production
 
-# Install Chromium and all system dependencies required by whatsapp-web.js / Puppeteer
+# Install Chromium, OpenSSL (required by Prisma), and all system dependencies
+# required by whatsapp-web.js / Puppeteer
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
+    openssl \
     ca-certificates \
     fonts-liberation \
     libatk-bridge2.0-0 \
@@ -89,5 +91,9 @@ EXPOSE 3333
 
 ENV NODE_ENV=production
 
-# Push schema to DB then start the server
-CMD ["sh", "-c", "npx prisma db push && node dist/index.js"]
+# Healthcheck: poll /api/health every 30s, allow 60s start-up grace period
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3333/api/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1); }).on('error', () => process.exit(1));"
+
+# Run DB migration then start the server; log any startup errors to stderr
+CMD ["sh", "-c", "echo '[CMD] Running prisma db push...' && npx prisma db push && echo '[CMD] Starting server...' && node dist/index.js"]
