@@ -103,7 +103,9 @@ router.post('/', uploadMedia.any(), async (req, res) => {
       mediaPath: filesMap.get(idx) || null, // Usar o caminho do arquivo se existir
     }));
 
-    const { name, description, targetType, targetId, targetTags, scheduledAt } = body;
+    const { name, description, targetType, targetTags, scheduledAt } = body;
+    // Normaliza targetId: string vazia não é um ID válido
+    const targetId = body.targetId && body.targetId.trim() !== '' ? body.targetId.trim() : null;
 
     if (!name) return res.status(400).json({ error: 'name é obrigatório' });
     if (!scheduledAt) return res.status(400).json({ error: 'scheduledAt é obrigatório' });
@@ -190,10 +192,11 @@ router.post('/:id/send', async (req, res) => {
   try {
     // force=true: permite reenviar mesmo que já esteja completed/cancelled
     const result = await sequenceService.sendSequenceNow(req.params.id, true);
-    res.json({
+    const status = result.failed === 0 ? 200 : 207; // 207 = partial success
+    res.status(status).json({
       message: result.failed === 0
         ? 'Sequência enviada com sucesso!'
-        : `Concluída: ${result.sent} enviadas, ${result.failed} falhadas`,
+        : `Concluída com erros: ${result.sent} enviadas, ${result.failed} falhadas`,
       sent: result.sent,
       failed: result.failed,
       errors: result.errors,

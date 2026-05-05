@@ -182,12 +182,24 @@ export const Sequences: React.FC = () => {
 
   const sendNow = useMutation({
     mutationFn: (id: string) => api.post(`/sequences/${id}/send`),
-    onSuccess: () => {
+    onSuccess: (response: any) => {
       queryClient.invalidateQueries({ queryKey: ['sequences'] });
-      toast.success('Sequência enviada!');
+      const data = response.data;
+      if (data.failed > 0) {
+        // Erros parciais
+        const errMsg = data.errors && data.errors.length > 0
+          ? `\nErros:\n${data.errors.join('\n')}`
+          : '';
+        toast.error(`⚠️ ${data.message}${errMsg}`, { duration: 8000 });
+      } else {
+        toast.success(`✅ ${data.message || 'Sequência enviada!'}`);
+      }
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Erro ao enviar');
+      const errData = error.response?.data;
+      const msg = errData?.error || error.message || 'Erro ao enviar';
+      const details = errData?.errors?.length > 0 ? `\n${errData.errors.join('\n')}` : '';
+      toast.error(`❌ ${msg}${details}`, { duration: 8000 });
     },
   });
 
@@ -544,10 +556,15 @@ export const Sequences: React.FC = () => {
                 </button>
               </div>
 
-              {seq.status === 'completed' && (
+              {(seq.status === 'completed' || seq.totalSent > 0 || seq.totalFailed > 0) && (
                 <div className="mt-4 pt-4 border-t border-gray-200">
                   <p className="text-sm text-gray-600">
                     ✅ <strong>{seq.totalSent}</strong> enviadas | ❌ <strong>{seq.totalFailed}</strong> falhadas
+                    {seq.totalFailed > 0 && (
+                      <span className="ml-2 text-red-500 text-xs">
+                        (clique em "Ver Detalhes" para mais informações)
+                      </span>
+                    )}
                   </p>
                 </div>
               )}
@@ -576,25 +593,66 @@ export const Sequences: React.FC = () => {
               </button>
             </div>
 
+            {/* Resumo de envios */}
+            {(selectedSequence.totalSent > 0 || selectedSequence.totalFailed > 0) && (
+              <div className="mb-6 p-4 rounded-lg bg-gray-50 border border-gray-200">
+                <h3 className="font-bold text-gray-700 mb-2">📊 Resultado do Envio</h3>
+                <div className="flex gap-4">
+                  <span className="text-green-600 font-semibold">✅ {selectedSequence.totalSent} enviadas</span>
+                  <span className="text-red-600 font-semibold">❌ {selectedSequence.totalFailed} falhadas</span>
+                </div>
+                {selectedSequence.totalFailed > 0 && (
+                  <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded">
+                    <p className="text-red-700 text-sm font-semibold mb-1">⚠️ Possíveis causas de falha:</p>
+                    <ul className="text-red-600 text-xs list-disc list-inside space-y-1">
+                      <li>Número de telefone inválido ou não cadastrado no WhatsApp</li>
+                      <li>WhatsApp desconectado durante o envio</li>
+                      <li>Arquivo de mídia não encontrado</li>
+                      <li>Número bloqueou mensagens</li>
+                    </ul>
+                    <p className="text-red-500 text-xs mt-2">💡 Verifique os logs do servidor para detalhes exatos.</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Info da sequência */}
+            <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200 text-sm text-blue-800">
+              <p><strong>Destino:</strong> {selectedSequence.targetType === 'contact' ? '👤 Contato específico' : selectedSequence.targetType === 'group' ? '👥 Grupo' : selectedSequence.targetType === 'all' ? '🌐 Todos' : selectedSequence.targetType === 'all_students' ? '🎓 Todos os alunos' : selectedSequence.targetType}</p>
+              <p><strong>Agendada para:</strong> {new Date(selectedSequence.scheduledAt).toLocaleString('pt-BR')}</p>
+              <p><strong>Status:</strong> {selectedSequence.status}</p>
+            </div>
+
+            <h3 className="font-bold text-gray-700 mb-3">📝 Mensagens ({selectedSequence.messages.length})</h3>
             <div className="space-y-4 mb-6">
               {selectedSequence.messages.map((msg, idx) => (
                 <div key={idx} className="bg-gray-50 p-4 rounded-lg border border-gray-200">
                   <p className="font-semibold mb-2">
-                    Mensagem {idx + 1} - {msg.type === 'text' ? '📄' : '📎'} {msg.type}
+                    Mensagem {idx + 1} — {msg.type === 'text' ? '📄 Texto' : msg.type === 'image' ? '🖼️ Imagem' : msg.type === 'audio' ? '🎵 Áudio' : msg.type === 'video' ? '🎬 Vídeo' : '📎 Documento'}
                   </p>
-                  {msg.body && <p className="text-gray-700 whitespace-pre-wrap">{msg.body}</p>}
+                  {msg.body && <p className="text-gray-700 whitespace-pre-wrap text-sm">{msg.body}</p>}
+                  {msg.mediaPath && <p className="text-blue-600 text-xs mt-1">📁 Arquivo: {msg.mediaPath}</p>}
                   {msg.caption && <p className="text-gray-600 text-sm italic">Legenda: {msg.caption}</p>}
-                  <p className="text-gray-500 text-sm mt-2">⏱️ Delay: {msg.delayBefore}ms</p>
+                  <p className="text-gray-500 text-xs mt-2">⏱️ Delay antes: {msg.delayBefore}ms</p>
                 </div>
               ))}
             </div>
 
-            <button
-              onClick={() => setSelectedSequence(null)}
-              className="w-full bg-gray-500 text-white py-2 rounded-lg hover:bg-gray-600 transition"
-            >
-              Fechar
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={() => { sendNow.mutate(selectedSequence.id); setSelectedSequence(null); }}
+                disabled={sendNow.isPending}
+                className="flex-1 bg-green-500 text-white py-2 rounded-lg hover:bg-green-600 transition disabled:bg-gray-400"
+              >
+                🚀 Reenviar Agora
+              </button>
+              <button
+                onClick={() => setSelectedSequence(null)}
+                className="flex-1 bg-gray-500 text-white py-2 rounded-lg hover:bg-gray-600 transition"
+              >
+                Fechar
+              </button>
+            </div>
           </div>
         </div>
       )}

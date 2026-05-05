@@ -225,26 +225,39 @@ class SequenceService {
   /**
    * Buscar destinatários baseado no tipo de alvo
    */
+  /**
+   * Normaliza o número de telefone: remove +, espaços, traços, parênteses.
+   * Garante apenas dígitos (ex: +55 (11) 91234-5678 -> 5511912345678)
+   */
+  private normalizePhone(phone: string): string {
+    return phone.replace(/[^\d]/g, '');
+  }
+
   private async getTargets(sequence: any): Promise<{ id: string; isGroup: boolean }[]> {
     const targets: { id: string; isGroup: boolean }[] = [];
 
-    if (sequence.targetType === 'contact' && sequence.targetId) {
-      const contact = await prisma.contact.findUnique({ where: { id: sequence.targetId } });
+    // targetId vazio string não deve ser usado como ID
+    const targetId = sequence.targetId && sequence.targetId.trim() !== '' ? sequence.targetId.trim() : null;
+
+    if (sequence.targetType === 'contact' && targetId) {
+      const contact = await prisma.contact.findUnique({ where: { id: targetId } });
       if (contact) {
-        targets.push({ id: contact.phone, isGroup: false });
+        const normalizedPhone = this.normalizePhone(contact.phone);
+        console.log(`[Sequence] 📞 Contato: ${contact.name} | Phone original: ${contact.phone} | Normalizado: ${normalizedPhone}`);
+        targets.push({ id: normalizedPhone, isGroup: false });
       } else {
-        console.warn(`[Sequence] ⚠️ Contato ${sequence.targetId} não encontrado`);
+        console.warn(`[Sequence] ⚠️ Contato com ID ${targetId} não encontrado no banco`);
       }
-    } else if (sequence.targetType === 'group' && sequence.targetId) {
-      const group = await prisma.whatsAppGroup.findUnique({ where: { id: sequence.targetId } });
+    } else if (sequence.targetType === 'group' && targetId) {
+      const group = await prisma.whatsAppGroup.findUnique({ where: { id: targetId } });
       if (group) {
         targets.push({ id: group.groupId, isGroup: true });
       } else {
-        console.warn(`[Sequence] ⚠️ Grupo ${sequence.targetId} não encontrado`);
+        console.warn(`[Sequence] ⚠️ Grupo com ID ${targetId} não encontrado no banco`);
       }
     } else if (sequence.targetType === 'all') {
       const contacts = await prisma.contact.findMany({ where: { status: 'active' } });
-      contacts.forEach((c) => targets.push({ id: c.phone, isGroup: false }));
+      contacts.forEach((c) => targets.push({ id: this.normalizePhone(c.phone), isGroup: false }));
 
       const groups = await prisma.whatsAppGroup.findMany({ where: { active: true } });
       groups.forEach((g) => targets.push({ id: g.groupId, isGroup: true }));
@@ -259,7 +272,7 @@ class SequenceService {
             tags: { contains: tags[0] },
           },
         });
-        contacts.forEach((c) => targets.push({ id: c.phone, isGroup: false }));
+        contacts.forEach((c) => targets.push({ id: this.normalizePhone(c.phone), isGroup: false }));
       }
     } else if (sequence.targetType === 'all_students') {
       const contacts = await prisma.contact.findMany({
@@ -268,7 +281,9 @@ class SequenceService {
           student: { isNot: null },
         },
       });
-      contacts.forEach((c) => targets.push({ id: c.phone, isGroup: false }));
+      contacts.forEach((c) => targets.push({ id: this.normalizePhone(c.phone), isGroup: false }));
+    } else {
+      console.warn(`[Sequence] ⚠️ targetType desconhecido ou targetId ausente: type=${sequence.targetType}, targetId=${targetId}`);
     }
 
     console.log(`[Sequence] 🎯 ${targets.length} destinatário(s) encontrado(s) para targetType=${sequence.targetType}`);
