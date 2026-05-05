@@ -94,6 +94,16 @@ export const Sequences: React.FC = () => {
         throw new Error('Adicione pelo menos uma mensagem');
       }
 
+      // Validate character limits before sending
+      for (let i = 0; i < messages.length; i++) {
+        const msg = messages[i];
+        if (msg.type === 'text' && (msg.body || '').length > 4096) {
+          throw new Error(
+            `Mensagem ${i + 1} excede o limite de 4096 caracteres do WhatsApp (${(msg.body || '').length} chars)`
+          );
+        }
+      }
+
       // Processar e validar horários
       const processedMessages = messages.map((msg) => ({
         ...msg,
@@ -437,15 +447,35 @@ export const Sequences: React.FC = () => {
                   </div>
                 </div>
 
-                {msg.type === 'text' && (
-                  <textarea
-                    placeholder="Texto da mensagem"
-                    value={msg.body || ''}
-                    onChange={(e) => updateMessage(idx, 'body', e.target.value)}
-                    className="w-full p-2 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    rows={3}
-                  />
-                )}
+                {msg.type === 'text' && (() => {
+                  const bodyLength = (msg.body || '').length;
+                  const isOverLimit = bodyLength > 4096;
+                  return (
+                    <div>
+                      <textarea
+                        placeholder="Texto da mensagem"
+                        value={msg.body || ''}
+                        onChange={(e) => updateMessage(idx, 'body', e.target.value)}
+                        className={`w-full p-2 border rounded text-sm focus:outline-none focus:ring-2 resize-y ${
+                          isOverLimit
+                            ? 'border-red-500 focus:ring-red-500'
+                            : 'focus:ring-blue-500'
+                        }`}
+                        rows={3}
+                        style={{ whiteSpace: 'pre-wrap' }}
+                      />
+                      <div className={`flex justify-between items-center mt-1 text-xs ${isOverLimit ? 'text-red-600 font-semibold' : 'text-gray-400'}`}>
+                        <span>
+                          {isOverLimit && '⚠️ Limite do WhatsApp excedido! '}
+                          {bodyLength > 3500 && !isOverLimit && '⚠️ Aproximando do limite. '}
+                        </span>
+                        <span className={isOverLimit ? 'text-red-600 font-bold' : bodyLength > 3500 ? 'text-yellow-600 font-semibold' : ''}>
+                          {bodyLength} / 4096
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {msg.type !== 'text' && (
                   <>
