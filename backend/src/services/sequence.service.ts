@@ -158,6 +158,23 @@ class SequenceService {
       if (!message.body || message.body.trim() === '') {
         throw new Error('Mensagem de texto sem conteúdo');
       }
+
+      const WHATSAPP_MAX_CHARS = 4096;
+      if (message.body.length > WHATSAPP_MAX_CHARS) {
+        throw new Error(
+          `Mensagem de texto excede o limite do WhatsApp (${message.body.length}/${WHATSAPP_MAX_CHARS} caracteres)`
+        );
+      }
+
+      // Preserve line breaks: log the exact body being sent so truncation is detectable
+      console.log(
+        `[Sequence] 📝 Enviando texto para ${target.id} | ` +
+        `Tamanho: ${message.body.length} chars | ` +
+        `Quebras de linha: ${(message.body.match(/\n/g) || []).length} | ` +
+        `Conteúdo completo:\n---\n${message.body}\n---`
+      );
+
+      // The body is passed as-is so \n characters are preserved by whatsapp-web.js
       if (target.isGroup) {
         await whatsappService.sendToGroup(target.id, message.body);
       } else {
