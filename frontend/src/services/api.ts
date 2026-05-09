@@ -133,3 +133,7 @@ export const cancelSchedule = (id: string) => api.delete(`/schedules/${id}`);
 
 // Mensagens
 export const getMessages = (params?: any) => api.get('/messages', { params }).then((r) => r.data);
+export const getContactMessages = (contactId: string, params?: any) => api.get(`/messages/contact/${contactId}`, { params }).then((r) => r.data);
+export const getGroupMessages = (groupId: string, params?: any) => api.get(`/messages/group/${groupId}`, { params }).then((r) => r.data);
+export const sendMessageToContact = (fd: FormData) => api.post('/messages/send-to-contact', fd).then((r) => r.data);
+export const sendMessageToGroup = (fd: FormData) => api.post('/messages/send-to-group', fd).then((r) => r.data);

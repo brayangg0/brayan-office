@@ -9,6 +9,7 @@ import Schedule from './pages/Schedule';
 import Sequences from './pages/Sequences';
 import WhatsAppSetup from './pages/WhatsAppSetup';
 import Automation from './pages/Automation';
+import Messages from './pages/Messages';
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="contacts" element={<Contacts />} />
           <Route path="students" element={<Students />} />
+          <Route path="messages" element={<Messages />} />
           <Route path="campaigns" element={<Campaigns />} />
           <Route path="templates" element={<Templates />} />
           <Route path="schedule" element={<Schedule />} />

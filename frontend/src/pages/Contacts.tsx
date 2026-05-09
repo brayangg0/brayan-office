@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { getContacts, getContact, createContact, updateContact, deleteContact, importContactsCsv, sendMessage, syncChats } from '../services/api';
 import toast from 'react-hot-toast';
 import { Plus, Search, Pencil, Trash2, UserCheck, Phone, Upload, Download, MessageCircle, X, Send, RefreshCw } from 'lucide-react';
@@ -7,6 +8,7 @@ import { socket } from '../components/Layout';
 
 export default function Contacts() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [modal, setModal] = useState<{ open: boolean; contact?: any }>({ open: false });
   const [chatModal, setChatModal] = useState<{ open: boolean; contact?: any }>({ open: false });
@@ -56,6 +58,12 @@ export default function Contacts() {
     } catch (e) {
       toast.error('Erro ao carregar mensagens');
     }
+  };
+
+  const openMessages = (contact: any) => {
+    navigate('/messages', {
+      state: { contactId: contact.id, contactName: contact.name, contactPhone: contact.phone },
+    });
   };
 
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -215,6 +223,7 @@ export default function Contacts() {
                 </td>
                 <td className="py-3 px-4">
                   <div className="flex gap-2">
+                    <button onClick={() => openMessages(c)} className="p-1.5 hover:bg-green-50 rounded text-whatsapp" title="Enviar Mensagem"><Send size={14} /></button>
                     <button onClick={() => openChat(c)} className="p-1.5 hover:bg-green-50 rounded text-whatsapp" title="Ver Conversa"><MessageCircle size={14} /></button>
                     <button onClick={() => openModal(c)} className="p-1.5 hover:bg-gray-100 rounded text-gray-500"><Pencil size={14} /></button>
                     <button onClick={() => setDeleteConfirm({ open: true, contactId: c.id, contactName: c.name })} className="p-1.5 hover:bg-red-50 rounded text-red-400" title="Remover contato"><Trash2 size={14} /></button>
@@ -241,6 +250,7 @@ export default function Contacts() {
                 <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5"><Phone size={10} /> {c.phone}</p>
               </div>
               <div className="flex items-center gap-1 shrink-0">
+                <button onClick={() => openMessages(c)} className="p-2 hover:bg-green-50 rounded-lg text-whatsapp" title="Enviar Mensagem"><Send size={16} /></button>
                 <button onClick={() => openChat(c)} className="p-2 hover:bg-green-50 rounded-lg text-whatsapp"><MessageCircle size={16} /></button>
                 <button onClick={() => openModal(c)} className="p-2 hover:bg-gray-100 rounded-lg text-gray-500"><Pencil size={16} /></button>
                 <button onClick={() => setDeleteConfirm({ open: true, contactId: c.id, contactName: c.name })} className="p-2 hover:bg-red-50 rounded-lg text-red-400"><Trash2 size={16} /></button>

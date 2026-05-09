@@ -5,7 +5,7 @@ import { io } from 'socket.io-client';
 import { getWhatsAppStatus } from '../services/api';
 import {
   LayoutDashboard, Users, GraduationCap, Megaphone,
-  FileText, Calendar, Smartphone, Wifi, WifiOff, Menu, X, Zap, Send
+  FileText, Calendar, Smartphone, Wifi, WifiOff, Menu, X, Zap, Send, MessageCircle
 } from 'lucide-react';
 
 export const socket = io({ path: '/socket.io' });
@@ -14,6 +14,7 @@ const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/contacts', icon: Users, label: 'Contatos' },
   { to: '/students', icon: GraduationCap, label: 'Alunos' },
+  { to: '/messages', icon: MessageCircle, label: 'Mensagens' },
   { to: '/campaigns', icon: Megaphone, label: 'Campanhas' },
   { to: '/templates', icon: FileText, label: 'Templates' },
   { to: '/schedule', icon: Calendar, label: 'Agendamentos' },

@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { getWhatsAppStatus, getQrCode, syncGroups, restartWhatsApp, logoutWhatsApp, sendMessage, getGroups, toggleWhatsAppGroup } from '../services/api';
 import { io } from 'socket.io-client';
 import toast from 'react-hot-toast';
-import { Wifi, WifiOff, RefreshCw, Send, Users, Smartphone, RefreshCcw, LogOut } from 'lucide-react';
+import { Wifi, WifiOff, RefreshCw, Send, Users, Smartphone, RefreshCcw, LogOut, MessageCircle } from 'lucide-react';
 
 const socket = io({ 
   path: '/socket.io',
@@ -15,6 +16,7 @@ const socket = io({
 
 export default function WhatsAppSetup() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [qrImage, setQrImage] = useState<string | null>(null);
   const [loadingQr, setLoadingQr] = useState(false);
   const [sendForm, setSendForm] = useState({ to: '', body: '', type: 'text', isGroup: false });
@@ -246,15 +248,25 @@ export default function WhatsAppSetup() {
                   </p>
                   <p className="text-xs text-gray-400">{g.members} membros · ID: {g.groupId.split('@')[0]}</p>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer shrink-0" title={g.active ? "Desativar grupo (não aparecerá para envios)" : "Ativar grupo"} onClick={(e) => e.stopPropagation()}>
-                  <input type="checkbox" className="sr-only peer" checked={g.active} onChange={() => toggleMut.mutate(g.id)} disabled={toggleMut.isPending} />
-                  <div className="w-9 h-5 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-[100%] peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-whatsapp"></div>
-                </label>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => navigate('/messages', { state: { groupId: g.id, groupName: g.name, groupMembers: g.members } })}
+                    className="p-1.5 hover:bg-green-50 rounded-lg text-whatsapp transition-colors"
+                    title="Enviar mensagem para este grupo"
+                  >
+                    <MessageCircle size={16} />
+                  </button>
+                  <label className="relative inline-flex items-center cursor-pointer" title={g.active ? "Desativar grupo (não aparecerá para envios)" : "Ativar grupo"} onClick={(e) => e.stopPropagation()}>
+                    <input type="checkbox" className="sr-only peer" checked={g.active} onChange={() => toggleMut.mutate(g.id)} disabled={toggleMut.isPending} />
+                    <div className="w-9 h-5 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-[100%] peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-whatsapp"></div>
+                  </label>
+                </div>
               </div>
             ))}
           </div>
         ) : <p className="text-gray-400 text-sm">Nenhum grupo. Clique em "Sincronizar Grupos".</p>}
       </div>
+
 
       {/* Envio rápido */}
       {isConnected && (
