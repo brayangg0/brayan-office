@@ -172,12 +172,13 @@ export default function Messages() {
     if (!selected || sending) return;
     if (!file && !text.trim()) return;
 
+    const currentSelected = selected;
     setSending(true);
     const fd = new FormData();
 
     try {
-      if (selected.type === 'contact') {
-        fd.append('contactId', selected.id);
+      if (currentSelected.type === 'contact') {
+        fd.append('contactId', currentSelected.id);
         if (file) {
           fd.append('media', file);
           fd.append('type', 'media');
@@ -197,7 +198,7 @@ export default function Messages() {
           createdAt: new Date().toISOString(),
         }]);
       } else {
-        fd.append('groupId', selected.id);
+        fd.append('groupId', currentSelected.id);
         if (file) {
           fd.append('media', file);
           fd.append('type', 'media');
