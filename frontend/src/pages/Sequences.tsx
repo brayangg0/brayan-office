@@ -94,6 +94,16 @@ export const Sequences: React.FC = () => {
         throw new Error('Adicione pelo menos uma mensagem');
       }
 
+      // Validate character limits before sending
+      for (let i = 0; i < messages.length; i++) {
+        const msg = messages[i];
+        if (msg.type === 'text' && (msg.body || '').length > 4096) {
+          throw new Error(
+            `Mensagem ${i + 1} excede o limite de 4096 caracteres do WhatsApp (${(msg.body || '').length} chars)`
+          );
+        }
+      }
+
       // Processar e validar horários
       const processedMessages = messages.map((msg) => ({
         ...msg,
@@ -244,12 +254,12 @@ export const Sequences: React.FC = () => {
   };
 
   return (
-    <div className="p-8">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-4xl font-bold text-gray-800">📨 Sequências de Mensagens</h1>
+    <div className="p-4 md:p-8">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6 md:mb-8">
+        <h1 className="text-2xl md:text-4xl font-bold text-gray-800">📨 Sequências de Mensagens</h1>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition"
+          className="bg-blue-600 text-white px-4 py-2 md:px-6 rounded-lg hover:bg-blue-700 transition self-start sm:self-auto text-sm md:text-base"
         >
           {showForm ? 'Cancelar' : '+ Criar Sequência'}
         </button>
@@ -257,11 +267,11 @@ export const Sequences: React.FC = () => {
 
       {/* Formulário de Criação */}
       {showForm && (
-        <div className="bg-white p-6 rounded-lg shadow-md mb-8 border-l-4 border-blue-500">
-          <h2 className="text-2xl font-bold mb-6">Criar Nova Sequência</h2>
+        <div className="bg-white p-4 md:p-6 rounded-lg shadow-md mb-6 md:mb-8 border-l-4 border-blue-500">
+          <h2 className="text-xl md:text-2xl font-bold mb-4 md:mb-6">Criar Nova Sequência</h2>
 
           {/* Dados Básicos */}
-          <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <input
               type="text"
               placeholder="Nome da sequência"
@@ -338,25 +348,25 @@ export const Sequences: React.FC = () => {
 
           {/* Mensagens */}
           <div className="mb-6">
-            <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+            <h3 className="text-lg md:text-xl font-bold mb-3 md:mb-4 flex items-center gap-2">
               📝 Mensagens ({messages.length})
             </h3>
 
             {messages.map((msg, idx) => (
-              <div key={idx} className="bg-gray-50 p-4 rounded-lg mb-4 border border-gray-200">
+              <div key={idx} className="bg-gray-50 p-3 md:p-4 rounded-lg mb-4 border border-gray-200">
                 <div className="flex justify-between items-center mb-3">
-                  <span className="font-semibold text-gray-700">Mensagem {idx + 1}</span>
+                  <span className="font-semibold text-gray-700 text-sm md:text-base">Mensagem {idx + 1}</span>
                   {messages.length > 1 && (
                     <button
                       onClick={() => removeMessage(idx)}
-                      className="text-red-500 hover:text-red-700 text-sm"
+                      className="text-red-500 hover:text-red-700 text-xs md:text-sm"
                     >
                       ❌ Remover
                     </button>
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 mb-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                   <select
                     value={msg.type}
                     onChange={(e) => updateMessage(idx, 'type', e.target.value)}
@@ -393,7 +403,7 @@ export const Sequences: React.FC = () => {
                   {/* Seleção de Dias */}
                   <div className="mb-3">
                     <label className="block text-sm font-medium text-gray-700 mb-2">📅 Dias da Semana</label>
-                    <div className="grid grid-cols-4 gap-2">
+                    <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
                       {['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'].map((day) => (
                         <label key={day} className="flex items-center gap-1 cursor-pointer">
                           <input
@@ -437,15 +447,35 @@ export const Sequences: React.FC = () => {
                   </div>
                 </div>
 
-                {msg.type === 'text' && (
-                  <textarea
-                    placeholder="Texto da mensagem"
-                    value={msg.body || ''}
-                    onChange={(e) => updateMessage(idx, 'body', e.target.value)}
-                    className="w-full p-2 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    rows={3}
-                  />
-                )}
+                {msg.type === 'text' && (() => {
+                  const bodyLength = (msg.body || '').length;
+                  const isOverLimit = bodyLength > 4096;
+                  return (
+                    <div>
+                      <textarea
+                        placeholder="Texto da mensagem"
+                        value={msg.body || ''}
+                        onChange={(e) => updateMessage(idx, 'body', e.target.value)}
+                        className={`w-full p-2 border rounded text-sm focus:outline-none focus:ring-2 resize-y ${
+                          isOverLimit
+                            ? 'border-red-500 focus:ring-red-500'
+                            : 'focus:ring-blue-500'
+                        }`}
+                        rows={3}
+                        style={{ whiteSpace: 'pre-wrap' }}
+                      />
+                      <div className={`flex justify-between items-center mt-1 text-xs ${isOverLimit ? 'text-red-600 font-semibold' : 'text-gray-400'}`}>
+                        <span>
+                          {isOverLimit && '⚠️ Limite do WhatsApp excedido! '}
+                          {bodyLength > 3500 && !isOverLimit && '⚠️ Aproximando do limite. '}
+                        </span>
+                        <span className={isOverLimit ? 'text-red-600 font-bold' : bodyLength > 3500 ? 'text-yellow-600 font-semibold' : ''}>
+                          {bodyLength} / 4096
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {msg.type !== 'text' && (
                   <>
@@ -498,22 +528,22 @@ export const Sequences: React.FC = () => {
       )}
 
       {/* Lista de Sequências */}
-      <div className="space-y-4">
+      <div className="space-y-3 md:space-y-4">
         {sequences.length === 0 ? (
           <div className="text-center py-8 bg-gray-50 rounded-lg">
-            <p className="text-gray-500 text-lg">Nenhuma sequência criada ainda</p>
+            <p className="text-gray-500 text-base md:text-lg">Nenhuma sequência criada ainda</p>
           </div>
         ) : (
           sequences.map((seq: MessageSequence) => (
-            <div key={seq.id} className="bg-white rounded-lg shadow-md p-6 border-l-4 border-purple-500 hover:shadow-lg transition">
-              <div className="grid grid-cols-4 gap-4 mb-4">
+            <div key={seq.id} className="bg-white rounded-lg shadow-md p-4 md:p-6 border-l-4 border-purple-500 hover:shadow-lg transition">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-4">
                 <div>
-                  <p className="text-gray-500 text-sm">Nome</p>
-                  <p className="font-bold text-lg">{seq.name}</p>
+                  <p className="text-gray-500 text-xs md:text-sm">Nome</p>
+                  <p className="font-bold text-sm md:text-lg">{seq.name}</p>
                 </div>
                 <div>
-                  <p className="text-gray-500 text-sm">Status</p>
-                  <p className="text-sm">
+                  <p className="text-gray-500 text-xs md:text-sm">Status</p>
+                  <p className="text-xs md:text-sm">
                     {seq.status === 'pending' && '⏳ Agendada'}
                     {seq.status === 'running' && '🚀 Em progresso'}
                     {seq.status === 'completed' && '✅ Concluída'}
@@ -521,28 +551,28 @@ export const Sequences: React.FC = () => {
                   </p>
                 </div>
                 <div>
-                  <p className="text-gray-500 text-sm">Mensagens</p>
-                  <p className="font-bold">{seq.messages.length}</p>
+                  <p className="text-gray-500 text-xs md:text-sm">Mensagens</p>
+                  <p className="font-bold text-sm md:text-base">{seq.messages.length}</p>
                 </div>
                 <div>
-                  <p className="text-gray-500 text-sm">Agendada para</p>
-                  <p className="text-sm font-mono">{new Date(seq.scheduledAt).toLocaleString('pt-BR')}</p>
+                  <p className="text-gray-500 text-xs md:text-sm">Agendada para</p>
+                  <p className="text-xs md:text-sm font-mono">{new Date(seq.scheduledAt).toLocaleString('pt-BR')}</p>
                 </div>
               </div>
 
-              {seq.description && <p className="text-gray-600 text-sm mb-3">{seq.description}</p>}
+              {seq.description && <p className="text-gray-600 text-xs md:text-sm mb-3">{seq.description}</p>}
 
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <button
                   onClick={() => setSelectedSequence(seq)}
-                  className="flex-1 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition text-sm"
+                  className="flex-1 bg-blue-500 text-white px-3 py-2 rounded hover:bg-blue-600 transition text-xs md:text-sm"
                 >
                   👁️ Ver Detalhes
                 </button>
                 <button
                   onClick={() => sendNow.mutate(seq.id)}
                   disabled={sendNow.isPending}
-                  className="flex-1 bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 transition text-sm disabled:bg-gray-400"
+                  className="flex-1 bg-green-500 text-white px-3 py-2 rounded hover:bg-green-600 transition text-xs md:text-sm disabled:bg-gray-400"
                 >
                   {sendNow.isPending ? '⏳' : '🚀'} Enviar Agora
                 </button>
@@ -550,15 +580,15 @@ export const Sequences: React.FC = () => {
                   onClick={() => {
                     if (confirm('Tem certeza?')) deleteSequence.mutate(seq.id);
                   }}
-                  className="flex-1 bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition text-sm"
+                  className="flex-1 bg-red-500 text-white px-3 py-2 rounded hover:bg-red-600 transition text-xs md:text-sm"
                 >
                   🗑️ Deletar
                 </button>
               </div>
 
               {(seq.status === 'completed' || seq.totalSent > 0 || seq.totalFailed > 0) && (
-                <div className="mt-4 pt-4 border-t border-gray-200">
-                  <p className="text-sm text-gray-600">
+                <div className="mt-3 md:mt-4 pt-3 md:pt-4 border-t border-gray-200">
+                  <p className="text-xs md:text-sm text-gray-600">
                     ✅ <strong>{seq.totalSent}</strong> enviadas | ❌ <strong>{seq.totalFailed}</strong> falhadas
                     {seq.totalFailed > 0 && (
                       <span className="ml-2 text-red-500 text-xs">
@@ -576,18 +606,18 @@ export const Sequences: React.FC = () => {
       {/* Modal de Detalhes */}
       {selectedSequence && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4"
           onClick={() => setSelectedSequence(null)}
         >
           <div
-            className="bg-white rounded-lg p-8 max-w-2xl w-full max-h-[80vh] overflow-y-auto"
+            className="bg-white rounded-t-2xl sm:rounded-lg p-4 md:p-8 w-full sm:max-w-2xl max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-2xl font-bold">{selectedSequence.name}</h2>
+              <h2 className="text-lg md:text-2xl font-bold">{selectedSequence.name}</h2>
               <button
                 onClick={() => setSelectedSequence(null)}
-                className="text-gray-500 hover:text-black text-2xl"
+                className="text-gray-500 hover:text-black text-xl md:text-2xl p-1"
               >
                 ✕
               </button>
@@ -638,17 +668,17 @@ export const Sequences: React.FC = () => {
               ))}
             </div>
 
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-3">
               <button
                 onClick={() => { sendNow.mutate(selectedSequence.id); setSelectedSequence(null); }}
                 disabled={sendNow.isPending}
-                className="flex-1 bg-green-500 text-white py-2 rounded-lg hover:bg-green-600 transition disabled:bg-gray-400"
+                className="flex-1 bg-green-500 text-white py-2.5 rounded-lg hover:bg-green-600 transition disabled:bg-gray-400 text-sm"
               >
                 🚀 Reenviar Agora
               </button>
               <button
                 onClick={() => setSelectedSequence(null)}
-                className="flex-1 bg-gray-500 text-white py-2 rounded-lg hover:bg-gray-600 transition"
+                className="flex-1 bg-gray-500 text-white py-2.5 rounded-lg hover:bg-gray-600 transition text-sm"
               >
                 Fechar
               </button>

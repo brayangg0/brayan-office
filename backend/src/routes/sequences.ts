@@ -91,17 +91,34 @@ router.post('/', uploadMedia.any(), async (req, res) => {
     }
 
     // Processar mensagens com caminhos de arquivo
-    const messageData = messages.map((msg: any, idx: number) => ({
-      order: msg.order,
-      type: msg.type,
-      body: msg.body || null,
-      caption: msg.caption || null,
-      delayBefore: msg.delayBefore || 2000,
-      messageDelay: msg.messageDelay || 3000,
-      repeatDays: JSON.stringify(msg.repeatDays || []),
-      repeatTimes: JSON.stringify(msg.repeatTimes || []),
-      mediaPath: filesMap.get(idx) || null, // Usar o caminho do arquivo se existir
-    }));
+    const WHATSAPP_MAX_CHARS = 4096;
+    const messageData = messages.map((msg: any, idx: number) => {
+      if (msg.type === 'text') {
+        const bodyLength = (msg.body || '').length;
+        console.log(
+          `[Sequences] 📝 Mensagem ${idx + 1} recebida | ` +
+          `Tipo: text | Tamanho: ${bodyLength} chars | ` +
+          `Quebras de linha: ${(msg.body || '').split('\n').length - 1} | ` +
+          `Conteúdo completo:\n---\n${msg.body || ''}\n---`
+        );
+        if (bodyLength > WHATSAPP_MAX_CHARS) {
+          throw new Error(
+            `Mensagem ${idx + 1} excede o limite do WhatsApp (${bodyLength}/${WHATSAPP_MAX_CHARS} caracteres)`
+          );
+        }
+      }
+      return {
+        order: msg.order,
+        type: msg.type,
+        body: msg.body || null,
+        caption: msg.caption || null,
+        delayBefore: msg.delayBefore || 2000,
+        messageDelay: msg.messageDelay || 3000,
+        repeatDays: JSON.stringify(msg.repeatDays || []),
+        repeatTimes: JSON.stringify(msg.repeatTimes || []),
+        mediaPath: filesMap.get(idx) || null, // Usar o caminho do arquivo se existir
+      };
+    });
 
     const { name, description, targetType, targetTags, scheduledAt } = body;
     // Normaliza targetId: string vazia não é um ID válido
@@ -223,6 +240,23 @@ router.post('/:id/message', uploadMedia.single('media'), async (req, res) => {
   const { type = 'text', body, caption } = req.body;
 
   try {
+    const WHATSAPP_MAX_CHARS = 4096;
+
+    if (type === 'text') {
+      const bodyLength = (body || '').length;
+      console.log(
+        `[Sequences] 📝 Mensagem avulsa recebida | ` +
+        `Tipo: text | Tamanho: ${bodyLength} chars | ` +
+        `Quebras de linha: ${(body || '').split('\n').length - 1} | ` +
+        `Conteúdo completo:\n---\n${body || ''}\n---`
+      );
+      if (bodyLength > WHATSAPP_MAX_CHARS) {
+        return res.status(400).json({
+          error: `Mensagem excede o limite do WhatsApp (${bodyLength}/${WHATSAPP_MAX_CHARS} caracteres)`,
+        });
+      }
+    }
+
     // Buscar próxima ordem
     const maxOrder = await prisma.sequenceMessage.aggregate({
       where: { sequenceId: req.params.id },

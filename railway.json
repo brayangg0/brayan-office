@@ -1,10 +1,9 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
-    "builder": "NIXPACKS"
+    "builder": "DOCKERFILE"
   },
   "deploy": {
-    "startCommand": "sh -c 'CHROMIUM_PATH=$(which chromium 2>/dev/null || which chromium-browser 2>/dev/null); export CHROMIUM_PATH; cd backend && npx prisma db push && node dist/index.js'",
     "healthcheckPath": "/api/health",
     "healthcheckTimeout": 60,
     "restartPolicyType": "ON_FAILURE",

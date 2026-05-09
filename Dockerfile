@@ -1,75 +1,99 @@
-# ─── Stage 1: Frontend build ──────────────────────────────────────────────────
+# ─── Stage 1: Build frontend ──────────────────────────────────────────────────
 FROM node:20-slim AS frontend-builder
 
 WORKDIR /app/frontend
 
-COPY frontend/package*.json ./
+# Instala dependências primeiro para melhor cache de camadas
+COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 
+# Copia o código fonte e faz o build
 COPY frontend/ ./
 RUN npm run build
 
 
-# ─── Stage 2: Backend build ───────────────────────────────────────────────────
+# ─── Stage 2: Build backend ───────────────────────────────────────────────────
 FROM node:20-slim AS backend-builder
 
 WORKDIR /app/backend
 
-COPY backend/package*.json ./
+# Instala dependências primeiro para melhor cache de camadas
+COPY backend/package.json backend/package-lock.json ./
 RUN npm ci
 
+# Copia o código fonte e faz o build
 COPY backend/ ./
-RUN npm run build && npx prisma generate
+RUN npx prisma generate
+RUN npm run build
 
 
-# ─── Stage 3: Production image ────────────────────────────────────────────────
+# ─── Stage 3: Imagem de produção ────────────────────────────────────────────────
 FROM node:20-slim AS production
 
-# Install Chromium and all required system libraries (replaces nixpacks.toml setup phase)
+# Instala Chromium, OpenSSL (necessário para o Prisma) e todas as dependências
+# de sistema exigidas pelo whatsapp-web.js / Puppeteer
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
-    libnss3 \
-    libfreetype6 \
-    libharfbuzz0b \
+    openssl \
+    ca-certificates \
     fonts-liberation \
-    libglib2.0-0 \
-    libdbus-1-3 \
     libatk-bridge2.0-0 \
+    libatk1.0-0 \
     libcups2 \
+    libdbus-1-3 \
     libdrm2 \
+    libexpat1 \
+    libfontconfig1 \
+    libgbm1 \
+    libglib2.0-0 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
     libx11-6 \
+    libx11-xcb1 \
+    libxcb1 \
     libxcomposite1 \
     libxdamage1 \
     libxext6 \
     libxfixes3 \
     libxrandr2 \
-    libexpat1 \
-    libfontconfig1 \
-    libgbm1 \
-    libxkbcommon0 \
-    libpango-1.0-0 \
-    libcairo2 \
-    libasound2 \
-    && rm -rf /var/lib/apt/lists/*
+    libxshmfence1 \
+    libxss1 \
+    libxtst6 \
+    xdg-utils \
+  && rm -rf /var/lib/apt/lists/*
 
-# Tell Puppeteer/whatsapp-web.js where to find the system Chromium
-ENV CHROMIUM_PATH=/usr/bin/chromium
+# Indica ao Puppeteer/whatsapp-web.js para usar o Chromium do sistema
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV NODE_ENV=production
+ENV CHROMIUM_PATH=/usr/bin/chromium
 
-WORKDIR /app
+WORKDIR /app/backend
 
-# Copy built frontend dist so backend can serve it at ../frontend/dist
-COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
+# Instala apenas dependências de produção
+COPY backend/package.json backend/package-lock.json ./
+RUN npm ci --omit=dev
 
-# Copy backend production dependencies and compiled output
-COPY --from=backend-builder /app/backend/node_modules ./backend/node_modules
-COPY --from=backend-builder /app/backend/dist         ./backend/dist
-COPY --from=backend-builder /app/backend/prisma       ./backend/prisma
-COPY backend/package.json                             ./backend/package.json
+# Copia o backend compilado do estágio de build
+COPY --from=backend-builder /app/backend/dist ./dist
 
-# Expose the backend port (default 3333, overridden by Railway's $PORT)
+# Copia o schema do Prisma e o cliente gerado
+COPY --from=backend-builder /app/backend/prisma ./prisma
+COPY --from=backend-builder /app/backend/node_modules/.prisma ./node_modules/.prisma
+
+# Copia o frontend compilado para que o backend possa servi-lo como arquivos estáticos
+# O backend resolve: path.join(process.cwd(), '..', 'frontend', 'dist')
+COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
+
+# Expõe a porta do backend
 EXPOSE 3333
 
-# Run Prisma schema push then start the server
-CMD ["sh", "-c", "cd backend && npx prisma db push && node dist/index.js"]
+ENV NODE_ENV=production
+
+# Healthcheck: consulta /api/health a cada 30s, com 60s de período inicial de espera
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3333/api/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1); }).on('error', () => process.exit(1));"
+
+# Executa a migração do banco e depois inicia o servidor; registra erros de inicialização no stderr
+CMD ["sh", "-c", "echo '[CMD] Executando prisma db push...' && npx prisma db push && echo '[CMD] Iniciando servidor...' && node dist/index.js"]

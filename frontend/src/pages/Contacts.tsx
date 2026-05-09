@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { getContacts, getContact, createContact, updateContact, deleteContact, importContactsCsv, sendMessage, syncChats } from '../services/api';
 import toast from 'react-hot-toast';
 import { Plus, Search, Pencil, Trash2, UserCheck, Phone, Upload, Download, MessageCircle, X, Send, RefreshCw } from 'lucide-react';
@@ -7,6 +8,7 @@ import { socket } from '../components/Layout';
 
 export default function Contacts() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [modal, setModal] = useState<{ open: boolean; contact?: any }>({ open: false });
   const [chatModal, setChatModal] = useState<{ open: boolean; contact?: any }>({ open: false });
@@ -56,6 +58,12 @@ export default function Contacts() {
     } catch (e) {
       toast.error('Erro ao carregar mensagens');
     }
+  };
+
+  const openMessages = (contact: any) => {
+    navigate('/messages', {
+      state: { contactId: contact.id, contactName: contact.name, contactPhone: contact.phone },
+    });
   };
 
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -159,19 +167,20 @@ export default function Contacts() {
   }[s] || 'badge bg-gray-100 text-gray-500');
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Contatos</h1>
-        <div className="flex gap-2">
-          <button onClick={() => syncChatsMut.mutate()} disabled={syncChatsMut.isPending} className="btn-secondary flex items-center gap-2">
-             <RefreshCw size={16} className={syncChatsMut.isPending ? 'animate-spin' : ''} />
-             {syncChatsMut.isPending ? 'Sincronizando...' : 'Sincronizar WhatsApp'}
+    <div className="p-4 md:p-6 space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <h1 className="text-xl md:text-2xl font-bold">Contatos</h1>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => syncChatsMut.mutate()} disabled={syncChatsMut.isPending} className="btn-secondary flex items-center gap-2 text-xs md:text-sm px-3 py-2">
+             <RefreshCw size={14} className={syncChatsMut.isPending ? 'animate-spin' : ''} />
+             <span className="hidden sm:inline">{syncChatsMut.isPending ? 'Sincronizando...' : 'Sincronizar WhatsApp'}</span>
+             <span className="sm:hidden">{syncChatsMut.isPending ? '...' : 'Sincronizar'}</span>
           </button>
-          <button onClick={() => setImportModal(true)} className="btn-secondary flex items-center gap-2">
-            <Upload size={16} /> Importar CSV
+          <button onClick={() => setImportModal(true)} className="btn-secondary flex items-center gap-2 text-xs md:text-sm px-3 py-2">
+            <Upload size={14} /> <span className="hidden sm:inline">Importar CSV</span><span className="sm:hidden">CSV</span>
           </button>
-          <button onClick={() => openModal()} className="btn-primary flex items-center gap-2">
-            <Plus size={16} /> Novo Contato
+          <button onClick={() => openModal()} className="btn-primary flex items-center gap-2 text-xs md:text-sm px-3 py-2">
+            <Plus size={14} /> <span className="hidden sm:inline">Novo Contato</span><span className="sm:hidden">Novo</span>
           </button>
         </div>
       </div>
@@ -182,7 +191,8 @@ export default function Contacts() {
           value={search} onChange={(e) => setSearch(e.target.value)} />
       </div>
 
-      <div className="card !p-0 overflow-hidden">
+      {/* Desktop table */}
+      <div className="card !p-0 overflow-hidden hidden md:block">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b">
             <tr>
@@ -199,8 +209,8 @@ export default function Contacts() {
             ) : data?.contacts?.map((c: any) => (
               <tr key={c.id} className="hover:bg-gray-50">
                 <td className="py-3 px-4 font-medium">{c.name}</td>
-                <td className="py-3 px-4 text-gray-500 flex items-center gap-1">
-                  <Phone size={12} /> {c.phone}
+                <td className="py-3 px-4 text-gray-500">
+                  <span className="flex items-center gap-1"><Phone size={12} /> {c.phone}</span>
                 </td>
                 <td className="py-3 px-4">
                   {JSON.parse(c.tags || '[]').map((t: string) => (
@@ -213,6 +223,7 @@ export default function Contacts() {
                 </td>
                 <td className="py-3 px-4">
                   <div className="flex gap-2">
+                    <button onClick={() => openMessages(c)} className="p-1.5 hover:bg-green-50 rounded text-whatsapp" title="Enviar Mensagem"><Send size={14} /></button>
                     <button onClick={() => openChat(c)} className="p-1.5 hover:bg-green-50 rounded text-whatsapp" title="Ver Conversa"><MessageCircle size={14} /></button>
                     <button onClick={() => openModal(c)} className="p-1.5 hover:bg-gray-100 rounded text-gray-500"><Pencil size={14} /></button>
                     <button onClick={() => setDeleteConfirm({ open: true, contactId: c.id, contactName: c.name })} className="p-1.5 hover:bg-red-50 rounded text-red-400" title="Remover contato"><Trash2 size={14} /></button>
@@ -223,6 +234,38 @@ export default function Contacts() {
           </tbody>
         </table>
         {data && <div className="px-4 py-3 border-t text-xs text-gray-400">{data.total} contatos</div>}
+      </div>
+
+      {/* Mobile card list */}
+      <div className="md:hidden space-y-3">
+        {isLoading ? (
+          <div className="card text-center py-8 text-gray-400 text-sm">Carregando...</div>
+        ) : data?.contacts?.length === 0 ? (
+          <div className="card text-center py-8 text-gray-400 text-sm">Nenhum contato encontrado</div>
+        ) : data?.contacts?.map((c: any) => (
+          <div key={c.id} className="card !p-4 space-y-2">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-semibold text-sm truncate">{c.name}</p>
+                <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5"><Phone size={10} /> {c.phone}</p>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <button onClick={() => openMessages(c)} className="p-2 hover:bg-green-50 rounded-lg text-whatsapp" title="Enviar Mensagem"><Send size={16} /></button>
+                <button onClick={() => openChat(c)} className="p-2 hover:bg-green-50 rounded-lg text-whatsapp"><MessageCircle size={16} /></button>
+                <button onClick={() => openModal(c)} className="p-2 hover:bg-gray-100 rounded-lg text-gray-500"><Pencil size={16} /></button>
+                <button onClick={() => setDeleteConfirm({ open: true, contactId: c.id, contactName: c.name })} className="p-2 hover:bg-red-50 rounded-lg text-red-400"><Trash2 size={16} /></button>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className={statusBadge(c.status)}>{c.status}</span>
+              {c.student && <span className="badge bg-green-100 text-green-700 flex items-center gap-1"><UserCheck size={10} /> {c.student.course?.name || 'Aluno'}</span>}
+              {JSON.parse(c.tags || '[]').map((t: string) => (
+                <span key={t} className="badge bg-blue-100 text-blue-700">{t}</span>
+              ))}
+            </div>
+          </div>
+        ))}
+        {data && <p className="text-xs text-gray-400 text-center">{data.total} contatos</p>}
       </div>
 
       {/* Chat Drawer */}
@@ -295,8 +338,8 @@ export default function Contacts() {
 
       {/* Modal de Confirmação de Exclusão */}
       {deleteConfirm.open && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm">
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+          <div className="bg-white rounded-t-2xl sm:rounded-xl shadow-xl w-full sm:max-w-sm">
             <div className="p-5">
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
@@ -339,16 +382,16 @@ export default function Contacts() {
 
       {/* Modal */}
       {modal.open && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+          <div className="bg-white rounded-t-2xl sm:rounded-xl shadow-xl w-full sm:max-w-md">
             <div className="p-4 border-b font-semibold">{modal.contact ? 'Editar Contato' : 'Novo Contato'}</div>
-            <form onSubmit={submit} className="p-4 space-y-3">
+            <form onSubmit={submit} className="p-4 space-y-3 max-h-[80vh] overflow-y-auto">
               <div><label className="label">Nome *</label><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></div>
               <div><label className="label">Telefone * (com DDD)</label><input className="input" placeholder="11999999999" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} required /></div>
               <div><label className="label">E-mail</label><input className="input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
               <div><label className="label">Tags (separadas por vírgula)</label><input className="input" placeholder="aluno, turma-A" value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} /></div>
               <div><label className="label">Notas</label><textarea className="input h-20 resize-none" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
-              <div className="flex gap-3 pt-2">
+              <div className="flex gap-3 pt-2 pb-safe">
                 <button type="button" onClick={() => setModal({ open: false })} className="btn-secondary flex-1">Cancelar</button>
                 <button type="submit" className="btn-primary flex-1" disabled={saveMut.isPending}>{saveMut.isPending ? 'Salvando...' : 'Salvar'}</button>
               </div>
@@ -359,8 +402,8 @@ export default function Contacts() {
 
       {/* Modal de Importação */}
       {importModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+          <div className="bg-white rounded-t-2xl sm:rounded-xl shadow-xl w-full sm:max-w-md">
             <div className="p-4 border-b font-semibold">Importar Contatos via CSV</div>
             <div className="p-4 space-y-4">
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">

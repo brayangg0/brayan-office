@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { getWhatsAppStatus, getQrCode, syncGroups, restartWhatsApp, logoutWhatsApp, sendMessage, getGroups, toggleWhatsAppGroup } from '../services/api';
 import { io } from 'socket.io-client';
 import toast from 'react-hot-toast';
-import { Wifi, WifiOff, RefreshCw, Send, Users, Smartphone, RefreshCcw, LogOut } from 'lucide-react';
+import { Wifi, WifiOff, RefreshCw, Send, Users, Smartphone, RefreshCcw, LogOut, MessageCircle } from 'lucide-react';
 
 const socket = io({ 
   path: '/socket.io',
@@ -15,6 +16,7 @@ const socket = io({
 
 export default function WhatsAppSetup() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [qrImage, setQrImage] = useState<string | null>(null);
   const [loadingQr, setLoadingQr] = useState(false);
   const [sendForm, setSendForm] = useState({ to: '', body: '', type: 'text', isGroup: false });
@@ -137,56 +139,56 @@ export default function WhatsAppSetup() {
   const isConnected = status?.status === 'connected';
 
   return (
-    <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-bold">Configuração WhatsApp</h1>
+    <div className="p-4 md:p-6 space-y-4 md:space-y-6">
+      <h1 className="text-xl md:text-2xl font-bold">Configuração WhatsApp</h1>
 
       {/* Status Card */}
-      <div className="card">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-4">
-            <div className={`p-3 rounded-xl ${isConnected ? 'bg-green-100' : status?.status === 'qr_ready' ? 'bg-yellow-100' : 'bg-red-100'}`}>
-              <Smartphone size={24} className={isConnected ? 'text-green-600' : status?.status === 'qr_ready' ? 'text-yellow-600' : 'text-red-500'} />
+      <div className="card !p-4 md:!p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4 md:mb-6">
+          <div className="flex items-center gap-3 md:gap-4">
+            <div className={`p-2 md:p-3 rounded-xl ${isConnected ? 'bg-green-100' : status?.status === 'qr_ready' ? 'bg-yellow-100' : 'bg-red-100'} shrink-0`}>
+              <Smartphone size={20} className={`md:w-6 md:h-6 ${isConnected ? 'text-green-600' : status?.status === 'qr_ready' ? 'text-yellow-600' : 'text-red-500'}`} />
             </div>
             <div>
-              <p className="font-semibold text-lg">
+              <p className="font-semibold text-sm md:text-lg">
                 {isConnected ? '✅ Conectado' :
                   status?.status === 'qr_ready' ? '⏳ Aguardando Escaneamento' :
                   '❌ Desconectado'}
               </p>
-              {isConnected && <p className="text-sm text-gray-500">📱 Número: +{status?.phone}</p>}
-              {status?.status === 'qr_ready' && <p className="text-sm text-yellow-600">⏱️ QR válido por 30 segundos</p>}
+              {isConnected && <p className="text-xs md:text-sm text-gray-500">📱 Número: +{status?.phone}</p>}
+              {status?.status === 'qr_ready' && <p className="text-xs md:text-sm text-yellow-600">⏱️ QR válido por 30 segundos</p>}
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {!isConnected && (
               <button
                 onClick={() => reloadQrMut.mutate()}
-                className="btn-secondary flex items-center gap-2 py-2 px-3"
+                className="btn-secondary flex items-center gap-2 py-2 px-3 text-xs md:text-sm"
                 disabled={reloadQrMut.isPending || loadingQr}
                 title="Recarregar QR Code se expirou"
               >
                 <RefreshCcw size={14} className={reloadQrMut.isPending ? 'animate-spin' : ''} />
-                <span className="text-sm">QR</span>
+                <span>QR</span>
               </button>
             )}
             <button
               onClick={() => restartMut.mutate()}
-              className="btn-secondary flex items-center gap-2 py-2 px-3"
+              className="btn-secondary flex items-center gap-2 py-2 px-3 text-xs md:text-sm"
               disabled={restartMut.isPending}
               title="Reiniciar conexão WhatsApp"
             >
               <RefreshCw size={14} className={restartMut.isPending ? 'animate-spin' : ''} />
-              <span className="text-sm">Reiniciar</span>
+              <span>Reiniciar</span>
             </button>
             {isConnected && (
               <button
                 onClick={() => logoutMut.mutate()}
-                className="btn-secondary flex items-center gap-2 py-2 px-3 text-red-600 hover:bg-red-50 border-red-200"
+                className="btn-secondary flex items-center gap-2 py-2 px-3 text-xs md:text-sm text-red-600 hover:bg-red-50 border-red-200"
                 disabled={logoutMut.isPending}
                 title="Sair desta conta do WhatsApp"
               >
                 <LogOut size={14} className={logoutMut.isPending ? 'animate-spin' : ''} />
-                <span className="text-sm">Sair</span>
+                <span>Sair</span>
               </button>
             )}
           </div>
@@ -228,59 +230,71 @@ export default function WhatsAppSetup() {
       </div>
 
       {/* Grupos */}
-      <div className="card">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold flex items-center gap-2"><Users size={18} /> Grupos ({groups?.length || 0})</h2>
-          <button onClick={() => syncMut.mutate()} className="btn-secondary text-sm" disabled={syncMut.isPending || !isConnected}>
+      <div className="card !p-4 md:!p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+          <h2 className="font-semibold flex items-center gap-2 text-sm md:text-base"><Users size={16} /> Grupos ({groups?.length || 0})</h2>
+          <button onClick={() => syncMut.mutate()} className="btn-secondary text-xs md:text-sm self-start sm:self-auto" disabled={syncMut.isPending || !isConnected}>
             <RefreshCw size={14} className={`inline mr-1 ${syncMut.isPending ? 'animate-spin' : ''}`} /> Sincronizar Grupos
           </button>
         </div>
         {groups && groups.length > 0 ? (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {groups.map((g: any) => (
               <div key={g.id} className={`p-3 border border-gray-100 rounded-lg flex items-center justify-between transition-colors ${!g.active ? 'bg-gray-50 opacity-60 grayscale' : ''}`}>
-                <div>
-                  <p className="font-medium text-sm flex items-center gap-2">
-                    {g.name}
-                    {!g.active && <span className="text-[10px] px-1.5 py-0.5 bg-gray-200 text-gray-500 rounded">Inativo</span>}
+                <div className="min-w-0 mr-2">
+                  <p className="font-medium text-sm flex items-center gap-2 flex-wrap">
+                    <span className="truncate">{g.name}</span>
+                    {!g.active && <span className="text-[10px] px-1.5 py-0.5 bg-gray-200 text-gray-500 rounded shrink-0">Inativo</span>}
                   </p>
                   <p className="text-xs text-gray-400">{g.members} membros · ID: {g.groupId.split('@')[0]}</p>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2" title={g.active ? "Desativar grupo (não aparecerá para envios)" : "Ativar grupo"} onClick={(e) => e.stopPropagation()}>
-                  <input type="checkbox" className="sr-only peer" checked={g.active} onChange={() => toggleMut.mutate(g.id)} disabled={toggleMut.isPending} />
-                  <div className="w-9 h-5 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-[100%] peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-whatsapp"></div>
-                </label>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => navigate('/messages', { state: { groupId: g.id, groupName: g.name, groupMembers: g.members } })}
+                    className="p-1.5 hover:bg-green-50 rounded-lg text-whatsapp transition-colors"
+                    title="Enviar mensagem para este grupo"
+                  >
+                    <MessageCircle size={16} />
+                  </button>
+                  <label className="relative inline-flex items-center cursor-pointer" title={g.active ? "Desativar grupo (não aparecerá para envios)" : "Ativar grupo"} onClick={(e) => e.stopPropagation()}>
+                    <input type="checkbox" className="sr-only peer" checked={g.active} onChange={() => toggleMut.mutate(g.id)} disabled={toggleMut.isPending} />
+                    <div className="w-9 h-5 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-[100%] peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-whatsapp"></div>
+                  </label>
+                </div>
               </div>
             ))}
           </div>
         ) : <p className="text-gray-400 text-sm">Nenhum grupo. Clique em "Sincronizar Grupos".</p>}
       </div>
 
+
       {/* Envio rápido */}
       {isConnected && (
-        <div className="card">
-          <h2 className="font-semibold mb-4 flex items-center gap-2"><Send size={18} /> Envio Rápido</h2>
+        <div className="card !p-4 md:!p-6">
+          <h2 className="font-semibold mb-4 flex items-center gap-2 text-sm md:text-base"><Send size={16} /> Envio Rápido</h2>
           <div className="space-y-3">
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-3">
               <div className="flex-1">
                 <label className="label">Destino (número ou ID do grupo)</label>
                 <input className="input" placeholder="5511999999999" value={sendForm.to}
                   onChange={(e) => setSendForm({ ...sendForm, to: e.target.value })} />
               </div>
-              <div>
-                <label className="label">Tipo</label>
-                <select className="input w-28" value={sendForm.type} onChange={(e) => setSendForm({ ...sendForm, type: e.target.value })}>
-                  <option value="text">Texto</option>
-                  <option value="image">Imagem</option>
-                  <option value="audio">Áudio</option>
-                  <option value="video">Vídeo</option>
-                </select>
-              </div>
-              <div className="flex items-end pb-0.5">
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input type="checkbox" checked={sendForm.isGroup} onChange={(e) => setSendForm({ ...sendForm, isGroup: e.target.checked })} />
-                  Grupo
-                </label>
+              <div className="flex gap-3">
+                <div className="flex-1 sm:flex-none">
+                  <label className="label">Tipo</label>
+                  <select className="input sm:w-28" value={sendForm.type} onChange={(e) => setSendForm({ ...sendForm, type: e.target.value })}>
+                    <option value="text">Texto</option>
+                    <option value="image">Imagem</option>
+                    <option value="audio">Áudio</option>
+                    <option value="video">Vídeo</option>
+                  </select>
+                </div>
+                <div className="flex items-end pb-0.5">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input type="checkbox" checked={sendForm.isGroup} onChange={(e) => setSendForm({ ...sendForm, isGroup: e.target.checked })} />
+                    Grupo
+                  </label>
+                </div>
               </div>
             </div>
 
