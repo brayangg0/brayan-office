@@ -293,7 +293,7 @@ export default function Messages() {
                 <button
                   key={c.id}
                   onClick={() => selectConversation({ type: 'contact', id: c.id, name: c.name, phone: c.phone })}
-                  className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left border-b border-gray-50 ${selected?.id === c.id && selected.type === 'contact' ? 'bg-green-50 border-l-2 border-l-whatsapp' : ''}`}
+                  className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left border-b border-gray-50 ${selected && selected.id === c.id && selected.type === 'contact' ? 'bg-green-50 border-l-2 border-l-whatsapp' : ''}`}
                 >
                   <div className="w-10 h-10 rounded-full bg-whatsapp/10 flex items-center justify-center text-whatsapp font-bold text-sm shrink-0">
                     {c.name.charAt(0).toUpperCase()}
