@@ -464,16 +464,37 @@ class WhatsAppService {
     try {
       const chat = await this.client.getChatById(chatId);
       const messages = await chat.fetchMessages({ limit });
-      return messages.map((msg: any) => ({
-        id: msg.id._serialized,
-        body: msg.body || (msg.hasMedia ? '[Mídia]' : ''),
-        fromMe: msg.fromMe,
-        type: msg.type,
-        timestamp: msg.timestamp ? msg.timestamp * 1000 : null,
-        hasMedia: msg.hasMedia,
-        author: msg.author || null,
-        ack: msg.ack,
-      }));
+      return await Promise.all(
+        messages.map(async (msg: any) => {
+          let mediaUrl: string | null = null;
+          let mediaType: string | null = null;
+
+          if (msg.hasMedia) {
+            try {
+              const media = await msg.downloadMedia();
+              if (media) {
+                mediaType = media.mimetype.split('/')[0]; // 'image', 'audio', 'video'
+                mediaUrl = `data:${media.mimetype};base64,${media.data}`;
+              }
+            } catch (e) {
+              console.error('[WhatsApp] Erro ao baixar mídia:', e);
+            }
+          }
+
+          return {
+            id: msg.id._serialized,
+            body: msg.body || (msg.hasMedia ? '[Mídia]' : ''),
+            fromMe: msg.fromMe,
+            type: msg.type,
+            timestamp: msg.timestamp ? msg.timestamp * 1000 : null,
+            hasMedia: msg.hasMedia,
+            mediaUrl,
+            mediaType,
+            author: msg.author || null,
+            ack: msg.ack,
+          };
+        })
+      );
     } catch (err) {
       console.error(`[WhatsApp] Erro ao buscar mensagens do chat ${chatId}:`, err);
       return [];

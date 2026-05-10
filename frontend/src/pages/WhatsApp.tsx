@@ -36,6 +36,8 @@ interface LiveMessage {
   type: string;
   timestamp: number | null;
   hasMedia: boolean;
+  mediaUrl?: string | null;
+  mediaType?: string | null;
   author: string | null;
   ack: number;
 }
@@ -196,7 +198,34 @@ function MessageBubble({ msg, isGroup }: { msg: LiveMessage; isGroup: boolean })
           </p>
         )}
         {/* Body */}
-        {msg.body && msg.body !== '[Mídia]' ? (
+        {msg.mediaUrl && msg.mediaType === 'image' ? (
+          <img
+            src={msg.mediaUrl}
+            alt="Imagem"
+            className="max-w-xs rounded-lg mb-1"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = 'none';
+            }}
+          />
+        ) : msg.mediaUrl && msg.mediaType === 'audio' ? (
+          <audio
+            controls
+            className="max-w-xs"
+            controlsList="nodownload"
+          >
+            <source src={msg.mediaUrl} />
+            Seu navegador não suporta reprodução de áudio.
+          </audio>
+        ) : msg.mediaUrl && msg.mediaType === 'video' ? (
+          <video
+            controls
+            className="max-w-xs rounded-lg"
+            controlsList="nodownload"
+          >
+            <source src={msg.mediaUrl} />
+            Seu navegador não suporta reprodução de vídeo.
+          </video>
+        ) : msg.body && msg.body !== '[Mídia]' ? (
           <p className="whitespace-pre-wrap break-words leading-relaxed">{msg.body}</p>
         ) : msg.hasMedia ? (
           <p className="text-gray-400 italic text-xs">📎 Mídia</p>
