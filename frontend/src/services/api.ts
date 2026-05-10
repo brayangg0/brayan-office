@@ -126,6 +126,15 @@ export const getScheduledMessages = (params?: any) => api.get('/automation/sched
 export const createScheduledMessage = (data: any) => api.post('/automation/scheduled-messages', data).then((r) => r.data);
 export const cancelScheduledMessage = (id: string) => api.post(`/automation/scheduled-messages/${id}/cancel`).then((r) => r.data);
 
+// Automação - AI Auto-Response
+export const getAIAutoResponseConfig = () => api.get('/automation/ai-response/config').then((r) => r.data);
+export const enableAIAutoResponse = (data: { enabled: boolean; welcomeMessage: string }) =>
+  api.post('/automation/ai-response/enable', data).then((r) => r.data);
+export const setAIAutoResponseOption = (number: 1 | 2 | 3 | 4, response: string) =>
+  api.post(`/automation/ai-response/option/${number}`, { response }).then((r) => r.data);
+export const handleAIAutoResponseMessage = (data: { contactId: string; message: string }) =>
+  api.post('/automation/ai-response/handle-message', data).then((r) => r.data);
+
 // Agendamentos
 export const getSchedules = (params?: any) => api.get('/schedules', { params }).then((r) => r.data);
 export const createSchedule = (fd: FormData) => api.post('/schedules', fd).then((r) => r.data);

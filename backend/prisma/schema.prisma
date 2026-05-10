@@ -35,10 +35,11 @@ model Contact {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  student       Student?
-  messages      Message[]
-  groupMembers  GroupMember[]
-  campaignSends CampaignSend[]
+  student            Student?
+  messages           Message[]
+  groupMembers       GroupMember[]
+  campaignSends      CampaignSend[]
+  conversationState  ConversationState?
 }
 
 // ─── Alunos (extensão de Contact para empresa de treinamentos) ──────────────
@@ -292,4 +293,26 @@ model WhatsAppSession {
   sessionData String?  // dados da sessão criptografados
   connectedAt DateTime?
   updatedAt   DateTime @updatedAt
+}
+
+// ─── AI Auto-Response ────────────────────────────────────────────────────────
+model AIAutoResponse {
+  id             String   @id @default(uuid())
+  enabled        Boolean  @default(false)
+  welcomeMessage String
+  option1        String?
+  option2        String?
+  option3        String?
+  option4        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model ConversationState {
+  id         String   @id @default(uuid())
+  contactId  String   @unique
+  contact    Contact  @relation(fields: [contactId], references: [id])
+  lastOption Int?     // Track which option user selected
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }

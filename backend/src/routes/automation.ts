@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../services/database';
 import { autoResponseService } from '../services/autoresponse.service';
+import { whatsappService } from '../services/whatsapp.service';
 import path from 'path';
 import fs from 'fs';
 
@@ -281,6 +282,153 @@ router.post('/scheduled-messages/:id/cancel', async (req, res) => {
       data: { status: 'cancelled' }
     });
     res.json({ message: 'Mensagem cancelada' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── AI AUTO-RESPONSE ──────────────────────────────────────────────────────
+
+// POST /api/automation/ai-response/enable
+router.post('/ai-response/enable', async (req, res) => {
+  try {
+    const { enabled, welcomeMessage } = req.body;
+
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: '"enabled" deve ser um booleano' });
+    }
+    if (!welcomeMessage || typeof welcomeMessage !== 'string') {
+      return res.status(400).json({ error: '"welcomeMessage" é obrigatório' });
+    }
+
+    // Upsert: only one config record (id = 'default')
+    const config = await (prisma as any).aIAutoResponse.upsert({
+      where: { id: 'default' },
+      update: { enabled, welcomeMessage },
+      create: { id: 'default', enabled, welcomeMessage },
+    });
+
+    res.json(config);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/automation/ai-response/option/:number
+router.post('/ai-response/option/:number', async (req, res) => {
+  try {
+    const optionNumber = parseInt(req.params.number, 10);
+    const { response } = req.body;
+
+    if (![1, 2, 3, 4].includes(optionNumber)) {
+      return res.status(400).json({ error: 'Número de opção inválido. Use 1, 2, 3 ou 4.' });
+    }
+    if (!response || typeof response !== 'string') {
+      return res.status(400).json({ error: '"response" é obrigatório' });
+    }
+
+    const fieldName = `option${optionNumber}` as 'option1' | 'option2' | 'option3' | 'option4';
+
+    const existing = await (prisma as any).aIAutoResponse.findUnique({ where: { id: 'default' } });
+    if (!existing) {
+      return res.status(404).json({ error: 'Configuração de AI não encontrada. Habilite primeiro via /enable.' });
+    }
+
+    const updated = await (prisma as any).aIAutoResponse.update({
+      where: { id: 'default' },
+      data: { [fieldName]: response },
+    });
+
+    res.json(updated);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/automation/ai-response/config
+router.get('/ai-response/config', async (_req, res) => {
+  try {
+    const config = await (prisma as any).aIAutoResponse.findUnique({ where: { id: 'default' } });
+
+    if (!config) {
+      return res.json({
+        enabled: false,
+        welcomeMessage: '',
+        options: { 1: '', 2: '', 3: '', 4: '' },
+      });
+    }
+
+    res.json({
+      enabled: config.enabled,
+      welcomeMessage: config.welcomeMessage,
+      options: {
+        1: config.option1 || '',
+        2: config.option2 || '',
+        3: config.option3 || '',
+        4: config.option4 || '',
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/automation/ai-response/handle-message
+router.post('/ai-response/handle-message', async (req, res) => {
+  try {
+    const { contactId, message } = req.body;
+
+    if (!contactId || !message) {
+      return res.status(400).json({ error: '"contactId" e "message" são obrigatórios' });
+    }
+
+    const config = await (prisma as any).aIAutoResponse.findUnique({ where: { id: 'default' } });
+    if (!config || !config.enabled) {
+      return res.status(400).json({ error: 'AI Auto-Response não está habilitado' });
+    }
+
+    const contact = await prisma.contact.findUnique({ where: { id: contactId } });
+    if (!contact) {
+      return res.status(404).json({ error: 'Contato não encontrado' });
+    }
+
+    const trimmed = message.trim();
+    const optionNumber = parseInt(trimmed, 10);
+    const isValidOption = [1, 2, 3, 4].includes(optionNumber);
+
+    if (isValidOption) {
+      // User selected a menu option — send the corresponding response
+      const fieldName = `option${optionNumber}` as 'option1' | 'option2' | 'option3' | 'option4';
+      const optionResponse = config[fieldName];
+
+      if (!optionResponse) {
+        await whatsappService.sendText(contact.phone, config.welcomeMessage);
+        return res.json({ action: 'welcome_sent', reason: 'option_not_configured' });
+      }
+
+      await whatsappService.sendText(contact.phone, optionResponse);
+
+      // Persist conversation state
+      await (prisma as any).conversationState.upsert({
+        where: { contactId },
+        update: { lastOption: optionNumber },
+        create: { contactId, lastOption: optionNumber },
+      });
+
+      return res.json({ action: 'option_response_sent', option: optionNumber });
+    } else {
+      // Not a valid option — send the welcome message
+      await whatsappService.sendText(contact.phone, config.welcomeMessage);
+
+      // Reset conversation state
+      await (prisma as any).conversationState.upsert({
+        where: { contactId },
+        update: { lastOption: null },
+        create: { contactId, lastOption: null },
+      });
+
+      return res.json({ action: 'welcome_sent' });
+    }
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
