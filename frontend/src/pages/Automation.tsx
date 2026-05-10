@@ -12,10 +12,13 @@ import {
   deleteAutomationCampaign,
   getContacts,
   getGroups,
-  getCourses
+  getCourses,
+  getAIAutoResponseConfig,
+  enableAIAutoResponse,
+  setAIAutoResponseOption,
 } from '../services/api';
 import toast from 'react-hot-toast';
-import { Plus, Trash2, Send, Clock, MessageSquare, Zap, Edit2 } from 'lucide-react';
+import { Plus, Trash2, Send, Clock, MessageSquare, Zap, Edit2, Bot, Save, Eye } from 'lucide-react';
 
 export default function Automation() {
   const qc = useQueryClient();
@@ -55,6 +58,51 @@ export default function Automation() {
       qc.invalidateQueries({ queryKey: ['ar-templates'] });
       toast.success('Template removido!');
     },
+  });
+
+  // === AI AUTO-RESPONSE ===
+  const DEFAULT_WELCOME = `Olá! 👋 Bem-vindo(a) ao nosso atendimento!\n\nPor favor, selecione uma das opções abaixo:\n\n1️⃣ Dúvidas Do Curso\n2️⃣ Suporte\n3️⃣ Segunda via\n4️⃣ Outros Assuntos\n\nResponda apenas com o número desejado.`;
+
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const [aiWelcome, setAiWelcome] = useState(DEFAULT_WELCOME);
+  const [aiOptions, setAiOptions] = useState({ 1: '', 2: '', 3: '', 4: '' });
+  const [showAiPreview, setShowAiPreview] = useState(false);
+
+  const { data: aiConfig } = useQuery({
+    queryKey: ['ai-autoresponse-config'],
+    queryFn: getAIAutoResponseConfig,
+  });
+
+  useEffect(() => {
+    if (aiConfig) {
+      setAiEnabled(aiConfig.enabled ?? false);
+      setAiWelcome(aiConfig.welcomeMessage || DEFAULT_WELCOME);
+      setAiOptions({
+        1: aiConfig.options?.[1] || '',
+        2: aiConfig.options?.[2] || '',
+        3: aiConfig.options?.[3] || '',
+        4: aiConfig.options?.[4] || '',
+      });
+    }
+  }, [aiConfig]);
+
+  const saveAIConfigMut = useMutation({
+    mutationFn: async () => {
+      // Save enable/welcome config
+      await enableAIAutoResponse({ enabled: aiEnabled, welcomeMessage: aiWelcome });
+      // Save each option response
+      const optionEntries = ([1, 2, 3, 4] as const);
+      for (const num of optionEntries) {
+        if (aiOptions[num]) {
+          await setAIAutoResponseOption(num, aiOptions[num]);
+        }
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ai-autoresponse-config'] });
+      toast.success('Configuração de AI salva com sucesso!');
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error || 'Erro ao salvar configuração de AI'),
   });
 
   // === CAMPANHAS AGENDADAS ===
@@ -314,6 +362,125 @@ export default function Automation() {
               <div>• "inscrição" → Como se inscrever</div>
               <div>• "dúvida" / "ajuda" → Oferece suporte</div>
               <div>• "informações" → Informações gerais</div>
+            </div>
+          </div>
+
+          {/* ─── AI AUTO-RESPONSE MENU ─── */}
+          <div className="card !p-4 md:!p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg md:text-xl font-bold flex items-center gap-2">
+                <Bot size={20} className="text-purple-600" />
+                Menu de Atendimento Automático (AI)
+              </h2>
+              {/* Enable/Disable Toggle */}
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <span className={`text-sm font-medium ${aiEnabled ? 'text-green-600' : 'text-gray-400'}`}>
+                  {aiEnabled ? 'Ativo' : 'Inativo'}
+                </span>
+                <div
+                  onClick={() => setAiEnabled(!aiEnabled)}
+                  className={`relative w-12 h-6 rounded-full transition-colors duration-200 ${aiEnabled ? 'bg-green-500' : 'bg-gray-300'}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${aiEnabled ? 'translate-x-7' : 'translate-x-1'}`} />
+                </div>
+              </label>
+            </div>
+
+            <p className="text-gray-500 text-sm mb-5">
+              Quando ativado, o sistema envia automaticamente a mensagem de boas-vindas com o menu de opções para novos contatos. Ao responder com 1, 2, 3 ou 4, o contato recebe a resposta correspondente.
+            </p>
+
+            {/* Welcome Message */}
+            <div className="space-y-4">
+              <div>
+                <label className="label font-semibold text-gray-700 mb-1 block">
+                  📩 Mensagem de Boas-Vindas (Menu Principal)
+                </label>
+                <textarea
+                  className="input font-mono text-sm"
+                  rows={8}
+                  value={aiWelcome}
+                  onChange={(e) => setAiWelcome(e.target.value)}
+                  placeholder="Digite a mensagem de boas-vindas com as opções do menu..."
+                />
+              </div>
+
+              {/* Option Responses */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {([1, 2, 3, 4] as const).map((num) => {
+                  const labels: Record<number, string> = {
+                    1: '1️⃣ Resposta para Opção 1',
+                    2: '2️⃣ Resposta para Opção 2',
+                    3: '3️⃣ Resposta para Opção 3',
+                    4: '4️⃣ Resposta para Opção 4',
+                  };
+                  const placeholders: Record<number, string> = {
+                    1: 'Ex: Dúvidas Do Curso — Nosso curso tem duração de 40h...',
+                    2: 'Ex: Suporte — Entre em contato com nosso suporte pelo e-mail...',
+                    3: 'Ex: Segunda via — Para solicitar segunda via, envie seu CPF...',
+                    4: 'Ex: Outros Assuntos — Descreva sua dúvida e retornaremos em breve...',
+                  };
+                  return (
+                    <div key={num}>
+                      <label className="label font-semibold text-gray-700 mb-1 block">{labels[num]}</label>
+                      <textarea
+                        className="input text-sm"
+                        rows={4}
+                        value={aiOptions[num]}
+                        onChange={(e) => setAiOptions({ ...aiOptions, [num]: e.target.value })}
+                        placeholder={placeholders[num]}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Actions */}
+              <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                <button
+                  onClick={() => saveAIConfigMut.mutate()}
+                  disabled={saveAIConfigMut.isPending}
+                  className="btn-primary flex items-center justify-center gap-2 flex-1"
+                >
+                  <Save size={16} />
+                  {saveAIConfigMut.isPending ? 'Salvando...' : 'Salvar Configuração'}
+                </button>
+                <button
+                  onClick={() => setShowAiPreview(!showAiPreview)}
+                  className="btn-secondary flex items-center justify-center gap-2 px-4"
+                >
+                  <Eye size={16} />
+                  {showAiPreview ? 'Ocultar Preview' : 'Preview do Menu'}
+                </button>
+              </div>
+
+              {/* Preview */}
+              {showAiPreview && (
+                <div className="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                  <p className="text-xs font-bold text-gray-500 uppercase mb-3">📱 Preview — Como o usuário verá:</p>
+                  <div className="bg-[#e5ddd5] rounded-xl p-4 space-y-3 max-w-sm">
+                    {/* Welcome bubble */}
+                    <div className="bg-white rounded-lg rounded-tl-none p-3 shadow-sm max-w-xs">
+                      <p className="text-sm text-gray-800 whitespace-pre-wrap">{aiWelcome || '(mensagem de boas-vindas vazia)'}</p>
+                      <p className="text-[10px] text-gray-400 text-right mt-1">✓✓</p>
+                    </div>
+                    {/* Option responses */}
+                    {([1, 2, 3, 4] as const).map((num) =>
+                      aiOptions[num] ? (
+                        <div key={num} className="flex flex-col gap-1">
+                          <div className="bg-[#dcf8c6] rounded-lg rounded-tr-none p-2 shadow-sm self-end max-w-[60px] text-center">
+                            <p className="text-sm font-bold text-gray-800">{num}</p>
+                          </div>
+                          <div className="bg-white rounded-lg rounded-tl-none p-3 shadow-sm max-w-xs">
+                            <p className="text-sm text-gray-800 whitespace-pre-wrap">{aiOptions[num]}</p>
+                            <p className="text-[10px] text-gray-400 text-right mt-1">✓✓</p>
+                          </div>
+                        </div>
+                      ) : null
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
