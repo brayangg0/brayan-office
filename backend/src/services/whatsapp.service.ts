@@ -471,18 +471,39 @@ class WhatsAppService {
   async getLiveChatMessages(chatId: string, limit = 30): Promise<any[]> {
     if (!this.isReady || !this.client) return [];
     try {
-      const chat = await Promise.race([
-        this.client.getChatById(chatId),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('getChatById timeout')), 30000)
-        ),
-      ]);
-      const messages = await Promise.race([
-        chat.fetchMessages({ limit }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('fetchMessages timeout')), 60000)
-        ),
-      ]);
+      let chat;
+      try {
+        chat = await Promise.race([
+          this.client.getChatById(chatId),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('getChatById timeout')), 30000)
+          ),
+        ]);
+      } catch (err) {
+        console.error(`[WhatsApp] Erro ao obter chat ${chatId}:`, err);
+        return [];
+      }
+
+      if (!chat) return [];
+
+      let messages: any[] = [];
+      try {
+        messages = await Promise.race([
+          chat.fetchMessages({ limit }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('fetchMessages timeout')), 60000)
+          ),
+        ]);
+      } catch (err: any) {
+        console.error(`[WhatsApp] Erro ao buscar mensagens do chat ${chatId}:`, err.message);
+        // Return empty array instead of throwing - chat may be loading or unavailable
+        return [];
+      }
+
+      if (!Array.isArray(messages)) {
+        return [];
+      }
+
       return await Promise.all(
         messages.map(async (msg: any) => {
           let mediaUrl: string | null = null;
@@ -495,7 +516,7 @@ class WhatsAppService {
                 new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
               ]);
               if (media) {
-                mediaType = media.mimetype.split('/')[0]; // 'image', 'audio', 'video'
+                mediaType = media.mimetype.split('/')[0];
                 mediaUrl = `data:${media.mimetype};base64,${media.data}`;
               }
             } catch (e) {
@@ -518,7 +539,7 @@ class WhatsAppService {
         })
       );
     } catch (err) {
-      console.error(`[WhatsApp] Erro ao buscar mensagens do chat ${chatId}:`, err);
+      console.error(`[WhatsApp] Erro geral ao buscar mensagens do chat ${chatId}:`, err);
       return [];
     }
   }
