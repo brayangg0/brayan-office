@@ -157,29 +157,12 @@ class AutoResponseService {
    */
   async processIncomingMessage(contactId: string, phone: string, message: string): Promise<boolean> {
     try {
-      if (!this.isEnabled) {
-        console.log(`[AutoResponse] ℹ Automação DESATIVADA globalmente. Ignorando mensagem de ${phone}`);
-        return false;
-      }
-
       console.log(`[AutoResponse] Processando mensagem: "${message}" de ${phone}`);
-      
-      // -- NOVO: Registra iteração do usuário --
+
+      // -- Registra iteração do usuário --
       this.lastUserMessageTime.set(contactId, Date.now());
       this.followUpSent.set(contactId, false);
       this.contactPhones.set(contactId, phone);
-
-      // -- NOVO: Verifica se o robô está em modo de "Pausa Manual" (Intervenção humana)
-      const lastManual = this.lastManualMessageTime.get(contactId) || 0;
-      if (Date.now() - lastManual < this.MANUAL_PAUSE_MS) {
-        console.log(`[AutoResponse] 🛑 Robô em SILÊNCIO para ${phone} (Intervenção manual nas últimas 1h)`);
-        return false;
-      }
-      
-      if (this.isProcessing) {
-        console.log('[AutoResponse] ⊘ Já está processando outra mensagem');
-        return false;
-      }
 
       // Busca contato
       const contact = await prisma.contact.findUnique({ where: { id: contactId } });
@@ -191,6 +174,33 @@ class AutoResponseService {
       // Verifica se contato não está bloqueado
       if (contact.status === 'blocked' || contact.status === 'inactive') {
         console.log(`[AutoResponse] ⊘ Contato ${contact.name} está ${contact.status}`);
+        return false;
+      }
+
+      // Check if AI Auto-Response is enabled (runs independently of global automation toggle)
+      const aiConfig = await (prisma as any).aIAutoResponse.findUnique({ where: { id: 'default' } });
+      if (aiConfig?.enabled) {
+        const aiResult = await this.handleAIAutoResponse(contactId, phone, message);
+        if (aiResult) {
+          this.isProcessing = false;
+          return true;
+        }
+      }
+
+      if (!this.isEnabled) {
+        console.log(`[AutoResponse] ℹ Automação DESATIVADA globalmente. Ignorando mensagem de ${phone}`);
+        return false;
+      }
+
+      // -- Verifica se o robô está em modo de "Pausa Manual" (Intervenção humana)
+      const lastManual = this.lastManualMessageTime.get(contactId) || 0;
+      if (Date.now() - lastManual < this.MANUAL_PAUSE_MS) {
+        console.log(`[AutoResponse] 🛑 Robô em SILÊNCIO para ${phone} (Intervenção manual nas últimas 1h)`);
+        return false;
+      }
+      
+      if (this.isProcessing) {
+        console.log('[AutoResponse] ⊘ Já está processando outra mensagem');
         return false;
       }
 
@@ -282,6 +292,59 @@ class AutoResponseService {
       return false;
     } finally {
       this.isProcessing = false;
+    }
+  }
+
+  /**
+   * Handles AI auto-response menu logic
+   */
+  private async handleAIAutoResponse(contactId: string, phone: string, message: string): Promise<boolean> {
+    try {
+      const config = await (prisma as any).aIAutoResponse.findUnique({ where: { id: 'default' } });
+      if (!config?.enabled) return false;
+
+      const trimmed = message.trim();
+      const optionNumber = parseInt(trimmed, 10);
+      const isValidOption = [1, 2, 3, 4].includes(optionNumber);
+
+      if (isValidOption) {
+        // User selected a menu option
+        const fieldName = `option${optionNumber}` as 'option1' | 'option2' | 'option3' | 'option4';
+        const optionResponse = config[fieldName];
+
+        if (!optionResponse) {
+          await whatsappService.sendText(phone, config.welcomeMessage);
+          return true;
+        }
+
+        await whatsappService.sendText(phone, optionResponse);
+
+        // Persist conversation state
+        await (prisma as any).conversationState.upsert({
+          where: { contactId },
+          update: { lastOption: optionNumber },
+          create: { contactId, lastOption: optionNumber },
+        });
+
+        this.lastBotResponseTime.set(contactId, Date.now());
+        return true;
+      } else {
+        // Not a valid option — send the welcome message
+        await whatsappService.sendText(phone, config.welcomeMessage);
+
+        // Reset conversation state
+        await (prisma as any).conversationState.upsert({
+          where: { contactId },
+          update: { lastOption: null },
+          create: { contactId, lastOption: null },
+        });
+
+        this.lastBotResponseTime.set(contactId, Date.now());
+        return true;
+      }
+    } catch (err) {
+      console.error('[AutoResponse] Erro ao processar AI auto-response:', err);
+      return false;
     }
   }
 
