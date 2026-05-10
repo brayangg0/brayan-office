@@ -313,7 +313,7 @@ export default function Messages() {
                 <button
                   key={g.id}
                   onClick={() => selectConversation({ type: 'group', id: g.id, name: g.name, members: g.members })}
-                  className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left border-b border-gray-50 ${selected?.id === g.id && selected.type === 'group' ? 'bg-green-50 border-l-2 border-l-whatsapp' : ''}`}
+                  className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left border-b border-gray-50 ${selected?.id === g.id && selected?.type === 'group' ? 'bg-green-50 border-l-2 border-l-whatsapp' : ''}`}
                 >
                   <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 shrink-0">
                     <Users size={18} />
