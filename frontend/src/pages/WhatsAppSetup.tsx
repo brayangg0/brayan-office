@@ -19,6 +19,7 @@ export default function WhatsAppSetup() {
   const navigate = useNavigate();
   const [qrImage, setQrImage] = useState<string | null>(null);
   const [loadingQr, setLoadingQr] = useState(false);
+  const [qrExpiresIn, setQrExpiresIn] = useState<number>(0);
   const [sendForm, setSendForm] = useState({ to: '', body: '', type: 'text', isGroup: false });
   const [file, setFile] = useState<File | null>(null);
 
@@ -30,32 +31,43 @@ export default function WhatsAppSetup() {
   const { data: groups } = useQuery({ queryKey: ['groups'], queryFn: getGroups });
 
   useEffect(() => {
-    // Socket listeners para tempo real
-    socket.on('whatsapp:qr', ({ qr }: { qr: string }) => {
+    // Ensure socket is connected
+    if (!socket.connected) {
+      socket.connect();
+    }
+
+    const handleQr = ({ qr }: { qr: string }) => {
       console.log('📱 QR Code recebido via Socket.IO');
       setQrImage(qr);
       setLoadingQr(false);
-    });
-    
-    socket.on('whatsapp:ready', () => {
+      setQrExpiresIn(30);
+    };
+
+    const handleReady = () => {
       console.log('✅ WhatsApp conectado!');
       setQrImage(null);
       setLoadingQr(false);
+      setQrExpiresIn(0);
       refetch();
       toast.success('WhatsApp conectado! ✅');
-    });
-    
-    socket.on('whatsapp:disconnected', () => {
+    };
+
+    const handleDisconnected = () => {
       console.log('❌ WhatsApp desconectado');
       setQrImage(null);
+      setQrExpiresIn(0);
       refetch();
       toast.error('WhatsApp desconectado');
-    });
+    };
+
+    socket.on('whatsapp:qr', handleQr);
+    socket.on('whatsapp:ready', handleReady);
+    socket.on('whatsapp:disconnected', handleDisconnected);
 
     return () => {
-      socket.off('whatsapp:qr');
-      socket.off('whatsapp:ready');
-      socket.off('whatsapp:disconnected');
+      socket.off('whatsapp:qr', handleQr);
+      socket.off('whatsapp:ready', handleReady);
+      socket.off('whatsapp:disconnected', handleDisconnected);
     };
   }, [refetch]);
 
@@ -64,7 +76,7 @@ export default function WhatsAppSetup() {
     if (status?.status === 'qr_ready' && !qrImage) {
       setLoadingQr(true);
       getQrCode()
-        .then((d) => setQrImage(d.qr))
+        .then((d) => { setQrImage(d.qr); setQrExpiresIn(30); })
         .catch((err) => {
           console.error('Erro ao buscar QR:', err);
           toast.error('Erro ao buscar QR Code');
@@ -73,6 +85,27 @@ export default function WhatsAppSetup() {
     } else if (status?.status === 'connected') {
       setQrImage(null);
       setLoadingQr(false);
+      setQrExpiresIn(0);
+    }
+  }, [status?.status, qrImage]);
+
+  // Auto-refresh QR when countdown reaches zero
+  useEffect(() => {
+    if (status?.status === 'qr_ready' && qrImage) {
+      // QR expires in 30 seconds
+      const timer = setInterval(() => {
+        setQrExpiresIn(prev => {
+          if (prev <= 1) {
+            // Auto-refresh QR
+            reloadQrMut.mutate();
+            return 30;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      setQrExpiresIn(30);
+      return () => clearInterval(timer);
     }
   }, [status?.status, qrImage]);
 
@@ -209,14 +242,17 @@ export default function WhatsAppSetup() {
                 <p className="text-sm text-gray-600 mb-3">
                   📱 <strong>Abra o WhatsApp no celular → Mais → Dispositivos conectados → Conectar dispositivo</strong>
                 </p>
-                <div className="flex justify-center mb-3">
+                <div className="flex justify-center mb-3 relative">
                   <img 
                     src={qrImage} 
                     alt="QR Code WhatsApp" 
                     className="w-56 h-56 border-4 border-whatsapp rounded-xl shadow-lg"
                   />
+                  <div className="absolute top-2 right-2 bg-red-500 text-white px-3 py-1 rounded-full text-sm font-bold">
+                    {qrExpiresIn}s
+                  </div>
                 </div>
-                <p className="text-xs text-gray-500">⏱️ QR válido por 30 segundos</p>
+                <p className="text-xs text-gray-500">⏱️ QR expira em {qrExpiresIn} segundos</p>
               </div>
             ) : (
               <div className="py-8 bg-gray-50 rounded-lg">
