@@ -417,6 +417,101 @@ class WhatsAppService {
     return chats.filter((c) => c.isGroup);
   }
 
+  // ─── Live Chat / Contact data for WhatsApp Web UI ────────────────────────
+
+  async getLiveChats(): Promise<any[]> {
+    if (!this.isReady || !this.client) return [];
+    try {
+      const chats = await this.client.getChats();
+      return await Promise.all(
+        chats.slice(0, 50).map(async (chat: any) => {
+          let profilePicUrl: string | null = null;
+          try {
+            profilePicUrl = await this.client!.getProfilePicUrl(chat.id._serialized);
+          } catch {
+            profilePicUrl = null;
+          }
+          const lastMsg = chat.lastMessage;
+          return {
+            id: chat.id._serialized,
+            name: chat.name || chat.id.user,
+            isGroup: chat.isGroup,
+            unreadCount: chat.unreadCount || 0,
+            timestamp: lastMsg?.timestamp ? lastMsg.timestamp * 1000 : null,
+            lastMessage: lastMsg
+              ? {
+                  body: lastMsg.body || (lastMsg.hasMedia ? '[Mídia]' : ''),
+                  fromMe: lastMsg.fromMe,
+                  type: lastMsg.type,
+                  timestamp: lastMsg.timestamp ? lastMsg.timestamp * 1000 : null,
+                }
+              : null,
+            profilePicUrl,
+            archived: chat.archived || false,
+            pinned: chat.pinned || false,
+            members: chat.isGroup ? (chat.participants?.length ?? 0) : undefined,
+          };
+        })
+      );
+    } catch (err) {
+      console.error('[WhatsApp] Erro ao buscar chats ao vivo:', err);
+      return [];
+    }
+  }
+
+  async getLiveChatMessages(chatId: string, limit = 30): Promise<any[]> {
+    if (!this.isReady || !this.client) return [];
+    try {
+      const chat = await this.client.getChatById(chatId);
+      const messages = await chat.fetchMessages({ limit });
+      return messages.map((msg: any) => ({
+        id: msg.id._serialized,
+        body: msg.body || (msg.hasMedia ? '[Mídia]' : ''),
+        fromMe: msg.fromMe,
+        type: msg.type,
+        timestamp: msg.timestamp ? msg.timestamp * 1000 : null,
+        hasMedia: msg.hasMedia,
+        author: msg.author || null,
+        ack: msg.ack,
+      }));
+    } catch (err) {
+      console.error(`[WhatsApp] Erro ao buscar mensagens do chat ${chatId}:`, err);
+      return [];
+    }
+  }
+
+  async sendLiveMessage(chatId: string, message: string): Promise<{ success: boolean; messageId?: string }> {
+    if (!this.isReady || !this.client) throw new Error('WhatsApp não está conectado');
+    try {
+      const msg = await this.client.sendMessage(chatId, message);
+      return { success: true, messageId: msg.id._serialized };
+    } catch (err: any) {
+      console.error(`[WhatsApp] Erro ao enviar mensagem para ${chatId}:`, err.message);
+      throw err;
+    }
+  }
+
+  async getLiveContacts(): Promise<any[]> {
+    if (!this.isReady || !this.client) return [];
+    try {
+      const contacts = await this.client.getContacts();
+      return contacts
+        .filter((c: any) => !c.isMe && (c.isMyContact || c.pushname || c.name))
+        .slice(0, 200)
+        .map((c: any) => ({
+          id: c.id._serialized,
+          name: c.pushname || c.name || c.id.user,
+          phone: c.number || c.id.user,
+          isGroup: c.isGroup,
+          isMyContact: c.isMyContact,
+          profilePicUrl: null,
+        }));
+    } catch (err) {
+      console.error('[WhatsApp] Erro ao buscar contatos ao vivo:', err);
+      return [];
+    }
+  }
+
   // ─── Status ──────────────────────────────────────────────────────────────
 
   getStatus() { return { isReady: this.isReady }; }

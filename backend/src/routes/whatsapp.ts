@@ -68,6 +68,42 @@ router.post('/send', uploadMedia.single('media'), async (req, res) => {
   res.json({ message: 'Mensagem enviada com sucesso' });
 });
 
+// GET /api/whatsapp/chats - Lista chats ao vivo do WhatsApp (contatos + grupos)
+router.get('/chats', async (_req, res) => {
+  const { isReady } = whatsappService.getStatus();
+  if (!isReady) return res.status(503).json({ error: 'WhatsApp não está conectado' });
+  const chats = await whatsappService.getLiveChats();
+  res.json(chats);
+});
+
+// GET /api/whatsapp/chats/:chatId/messages - Mensagens de um chat específico
+router.get('/chats/:chatId/messages', async (req, res) => {
+  const { isReady } = whatsappService.getStatus();
+  if (!isReady) return res.status(503).json({ error: 'WhatsApp não está conectado' });
+  const { chatId } = req.params;
+  const limit = parseInt(String(req.query.limit || '30'), 10);
+  const messages = await whatsappService.getLiveChatMessages(decodeURIComponent(chatId), limit);
+  res.json(messages);
+});
+
+// POST /api/whatsapp/send-message - Envia mensagem para um chat
+router.post('/send-message', async (req, res) => {
+  const { chatId, message } = req.body;
+  if (!chatId || !message) return res.status(400).json({ error: 'Campos "chatId" e "message" são obrigatórios' });
+  const { isReady } = whatsappService.getStatus();
+  if (!isReady) return res.status(503).json({ error: 'WhatsApp não está conectado' });
+  const result = await whatsappService.sendLiveMessage(chatId, message);
+  res.json(result);
+});
+
+// GET /api/whatsapp/contacts - Lista contatos ao vivo do WhatsApp
+router.get('/contacts', async (_req, res) => {
+  const { isReady } = whatsappService.getStatus();
+  if (!isReady) return res.status(503).json({ error: 'WhatsApp não está conectado' });
+  const contacts = await whatsappService.getLiveContacts();
+  res.json(contacts);
+});
+
 // GET /api/whatsapp/groups - Lista grupos sincronizados
 router.get('/groups', async (_req, res) => {
   const groups = await prisma.whatsAppGroup.findMany({ orderBy: { name: 'asc' } });
