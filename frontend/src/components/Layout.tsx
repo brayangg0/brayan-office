@@ -11,16 +11,17 @@ import {
 export const socket = io({ path: '/socket.io' });
 
 const navItems = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/contacts', icon: Users, label: 'Contatos' },
-  { to: '/students', icon: GraduationCap, label: 'Alunos' },
-  { to: '/messages', icon: MessageCircle, label: 'Mensagens' },
-  { to: '/campaigns', icon: Megaphone, label: 'Campanhas' },
-  { to: '/templates', icon: FileText, label: 'Templates' },
-  { to: '/schedule', icon: Calendar, label: 'Agendamentos' },
-  { to: '/sequences', icon: Send, label: 'Sequências' },
-  { to: '/whatsapp', icon: Smartphone, label: 'WhatsApp' },
-  { to: '/automation', icon: Zap, label: 'Automação' },
+  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', end: true },
+  { to: '/contacts', icon: Users, label: 'Contatos', end: false },
+  { to: '/students', icon: GraduationCap, label: 'Alunos', end: false },
+  { to: '/messages', icon: MessageCircle, label: 'Mensagens', end: false },
+  { to: '/whatsapp', icon: MessageCircle, label: 'WhatsApp Web', end: true },
+  { to: '/campaigns', icon: Megaphone, label: 'Campanhas', end: false },
+  { to: '/templates', icon: FileText, label: 'Templates', end: false },
+  { to: '/schedule', icon: Calendar, label: 'Agendamentos', end: false },
+  { to: '/sequences', icon: Send, label: 'Sequências', end: false },
+  { to: '/whatsapp/setup', icon: Smartphone, label: 'Config. WA', end: true },
+  { to: '/automation', icon: Zap, label: 'Automação', end: false },
 ];
 
 export default function Layout() {
@@ -95,8 +96,8 @@ export default function Layout() {
 
       {/* Nav */}
       <nav className="flex-1 py-4 space-y-1 px-2">
-        {navItems.map(({ to, icon: Icon, label }) => (
-          <NavLink key={to} to={to} onClick={onNavClick}
+        {navItems.map(({ to, icon: Icon, label, end }) => (
+          <NavLink key={to} to={to} end={end} onClick={onNavClick}
             className={({ isActive }) =>
               `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive ? 'bg-whatsapp text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'
               }`

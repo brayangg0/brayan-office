@@ -108,6 +108,14 @@ export const toggleWhatsAppGroup = (id: string) => api.post(`/whatsapp/groups/${
 export const restartWhatsApp = () => api.post('/whatsapp/restart').then((r) => r.data);
 export const logoutWhatsApp = () => api.post('/whatsapp/logout').then((r) => r.data);
 
+// WhatsApp Web UI
+export const getLiveChats = () => api.get('/whatsapp/chats').then((r) => r.data);
+export const getLiveChatMessages = (chatId: string, limit = 30) =>
+  api.get(`/whatsapp/chats/${encodeURIComponent(chatId)}/messages`, { params: { limit } }).then((r) => r.data);
+export const sendLiveMessage = (chatId: string, message: string) =>
+  api.post('/whatsapp/send-message', { chatId, message }).then((r) => r.data);
+export const getLiveContacts = () => api.get('/whatsapp/contacts').then((r) => r.data);
+
 // Automação - AutoResponse
 export const getAutoResponseStatus = () => api.get('/automation/autoresponse/status').then((r) => r.data);
 export const getAutoResponseTemplates = () => api.get('/automation/autoresponse/templates').then((r) => r.data);

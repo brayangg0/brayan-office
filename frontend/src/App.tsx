@@ -8,6 +8,7 @@ import Templates from './pages/Templates';
 import Schedule from './pages/Schedule';
 import Sequences from './pages/Sequences';
 import WhatsAppSetup from './pages/WhatsAppSetup';
+import WhatsApp from './pages/WhatsApp';
 import Automation from './pages/Automation';
 import Messages from './pages/Messages';
 
@@ -25,7 +26,8 @@ export default function App() {
           <Route path="templates" element={<Templates />} />
           <Route path="schedule" element={<Schedule />} />
           <Route path="sequences" element={<Sequences />} />
-          <Route path="whatsapp" element={<WhatsAppSetup />} />
+          <Route path="whatsapp" element={<WhatsApp />} />
+          <Route path="whatsapp/setup" element={<WhatsAppSetup />} />
           <Route path="automation" element={<Automation />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
