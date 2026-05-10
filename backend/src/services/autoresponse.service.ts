@@ -82,6 +82,7 @@ class AutoResponseService {
   private followUpSent: Map<string, boolean> = new Map();
   private contactPhones: Map<string, string> = new Map();
   private MANUAL_PAUSE_MS = 10 * 60 * 1000; // 10 minutos de pausa
+  private aiMenuSent: Map<string, boolean> = new Map();
 
   async initialize() {
     console.log('[AutoResponse] Inicializando serviço de autorresposta...');
@@ -307,13 +308,15 @@ class AutoResponseService {
       const optionNumber = parseInt(trimmed, 10);
       const isValidOption = [1, 2, 3, 4].includes(optionNumber) && trimmed === String(optionNumber);
 
+      // Check if user has already received the menu
+      const hasReceivedMenu = this.aiMenuSent.get(contactId) || false;
+
       if (isValidOption) {
-        // User selected a menu option — send ONLY the option response, never the menu
+        // User selected a valid option
         const fieldName = `option${optionNumber}` as 'option1' | 'option2' | 'option3' | 'option4';
         const optionResponse = config[fieldName];
 
         if (!optionResponse) {
-          // Option is configured but has no response body — do nothing
           return false;
         }
 
@@ -328,9 +331,12 @@ class AutoResponseService {
 
         this.lastBotResponseTime.set(contactId, Date.now());
         return true;
-      } else {
-        // Not a valid option — send the welcome message
+      } else if (!hasReceivedMenu) {
+        // First message and not a valid option - send the menu
         await whatsappService.sendText(phone, config.welcomeMessage);
+
+        // Mark that menu has been sent
+        this.aiMenuSent.set(contactId, true);
 
         // Reset conversation state
         await (prisma as any).conversationState.upsert({
@@ -341,6 +347,9 @@ class AutoResponseService {
 
         this.lastBotResponseTime.set(contactId, Date.now());
         return true;
+      } else {
+        // Menu already sent and user sent invalid text - don't respond
+        return false;
       }
 
     } catch (err) {
