@@ -57,10 +57,12 @@ class WhatsAppService {
           '--disable-gpu',
           '--no-first-run',
           '--no-zygote',
-          // Removido: '--single-process' é muito pesado
+          '--disable-extensions',
+          '--disable-plugins',
         ],
         executablePath: detectChromiumPath(),
-        protocolTimeout: 120000, // Increase from default 30s to 120s
+        protocolTimeout: 180000, // 180 seconds for protocol operations
+        timeout: 180000, // 180 seconds for browser launch
       },
       takeoverOnConflict: true,
       takeoverTimeoutMs: 0,
@@ -395,7 +397,12 @@ class WhatsAppService {
   async syncGroups() {
     if (!this.isReady || !this.client) return;
     try {
-      const chats = await this.client.getChats();
+      const chats = await Promise.race([
+        this.client.getChats(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('getChats timeout')), 120000) // 120s
+        ),
+      ]);
       const groups = chats.filter((c): c is GroupChat => c.isGroup);
 
       for (const group of groups) {
@@ -426,7 +433,7 @@ class WhatsAppService {
       const chats = await Promise.race([
         this.client.getChats(),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('getChats timeout')), 60000)
+          setTimeout(() => reject(new Error('getChats timeout')), 120000) // 120s instead of 60s
         ),
       ]);
       return await Promise.all(
@@ -435,7 +442,7 @@ class WhatsAppService {
           try {
             profilePicUrl = await Promise.race([
               this.client!.getProfilePicUrl(chat.id._serialized),
-              new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000)),
+              new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000)), // 8s instead of 5s
             ]);
           } catch {
             profilePicUrl = null;
@@ -476,7 +483,7 @@ class WhatsAppService {
         chat = await Promise.race([
           this.client.getChatById(chatId),
           new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('getChatById timeout')), 30000)
+            setTimeout(() => reject(new Error('getChatById timeout')), 60000) // 60s instead of 30s
           ),
         ]);
       } catch (err) {
@@ -491,7 +498,7 @@ class WhatsAppService {
         messages = await Promise.race([
           chat.fetchMessages({ limit }),
           new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('fetchMessages timeout')), 60000)
+            setTimeout(() => reject(new Error('fetchMessages timeout')), 120000) // 120s instead of 60s
           ),
         ]);
       } catch (err: any) {
@@ -513,7 +520,7 @@ class WhatsAppService {
             try {
               const media = await Promise.race([
                 msg.downloadMedia(),
-                new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
+                new Promise<null>((resolve) => setTimeout(() => resolve(null), 15000)), // 15s instead of 10s
               ]);
               if (media) {
                 mediaType = media.mimetype.split('/')[0];
