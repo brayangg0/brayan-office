@@ -484,6 +484,15 @@ class WhatsAppService {
     if (!this.isReady || !this.client) throw new Error('WhatsApp não está conectado');
     try {
       const msg = await this.client.sendMessage(chatId, message);
+      
+      // Persist message to database
+      try {
+        await this.persistMessage(msg);
+      } catch (persistErr) {
+        console.error('[WhatsApp] Erro ao persistir mensagem:', persistErr);
+        // Don't fail the send if persistence fails
+      }
+      
       return { success: true, messageId: msg.id._serialized };
     } catch (err: any) {
       console.error(`[WhatsApp] Erro ao enviar mensagem para ${chatId}:`, err.message);
