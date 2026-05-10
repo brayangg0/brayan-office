@@ -305,16 +305,16 @@ class AutoResponseService {
 
       const trimmed = message.trim();
       const optionNumber = parseInt(trimmed, 10);
-      const isValidOption = [1, 2, 3, 4].includes(optionNumber);
+      const isValidOption = [1, 2, 3, 4].includes(optionNumber) && trimmed === String(optionNumber);
 
       if (isValidOption) {
-        // User selected a menu option
+        // User selected a menu option — send ONLY the option response, never the menu
         const fieldName = `option${optionNumber}` as 'option1' | 'option2' | 'option3' | 'option4';
         const optionResponse = config[fieldName];
 
         if (!optionResponse) {
-          await whatsappService.sendText(phone, config.welcomeMessage);
-          return true;
+          // Option is configured but has no response body — do nothing
+          return false;
         }
 
         await whatsappService.sendText(phone, optionResponse);
@@ -342,6 +342,7 @@ class AutoResponseService {
         this.lastBotResponseTime.set(contactId, Date.now());
         return true;
       }
+
     } catch (err) {
       console.error('[AutoResponse] Erro ao processar AI auto-response:', err);
       return false;
