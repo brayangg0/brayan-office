@@ -106,19 +106,18 @@ function Avatar({
   profilePicUrl: string | null;
   size?: 'sm' | 'md' | 'lg';
 }) {
+  const [imgError, setImgError] = useState(false);
   const dim = size === 'lg' ? 'w-12 h-12' : size === 'sm' ? 'w-8 h-8' : 'w-10 h-10';
   const iconSize = size === 'lg' ? 22 : size === 'sm' ? 14 : 18;
   const textSize = size === 'lg' ? 'text-base' : size === 'sm' ? 'text-xs' : 'text-sm';
 
-  if (profilePicUrl) {
+  if (profilePicUrl && !imgError) {
     return (
       <img
         src={profilePicUrl}
         alt={name}
         className={`${dim} rounded-full object-cover shrink-0`}
-        onError={(e) => {
-          (e.target as HTMLImageElement).style.display = 'none';
-        }}
+        onError={() => setImgError(true)}
       />
     );
   }
@@ -208,14 +207,19 @@ function MessageBubble({ msg, isGroup }: { msg: LiveMessage; isGroup: boolean })
             }}
           />
         ) : msg.mediaUrl && msg.mediaType === 'audio' ? (
-          <audio 
-            controls 
-            className="max-w-[200px] sm:max-w-xs h-8"
-            controlsList="nodownload"
-          >
-            <source src={msg.mediaUrl} />
-            Seu navegador não suporta reprodução de áudio.
-          </audio>
+          <div className="w-full">
+            <audio
+              controls
+              className="max-w-[200px] sm:max-w-xs h-8"
+              controlsList="nodownload"
+              onError={(e) => console.error('[Audio] Erro ao reproduzir áudio:', e)}
+            >
+              <source src={msg.mediaUrl} type="audio/mpeg" />
+              <source src={msg.mediaUrl} type="audio/ogg" />
+              <source src={msg.mediaUrl} type="audio/wav" />
+              Seu navegador não suporta reprodução de áudio.
+            </audio>
+          </div>
         ) : msg.mediaUrl && msg.mediaType === 'video' ? (
           <video 
             controls 
@@ -300,7 +304,7 @@ export default function WhatsApp() {
     setLoadingMessages(true);
     setMessages([]);
     try {
-      const data = await getLiveChatMessages(chat.id, 40);
+      const data = await getLiveChatMessages(chat.id, 50);
       setMessages(Array.isArray(data) ? data : []);
     } catch {
       setMessages([]);

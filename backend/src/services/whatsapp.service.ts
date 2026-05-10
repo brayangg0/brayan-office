@@ -60,6 +60,7 @@ class WhatsAppService {
           // Removido: '--single-process' é muito pesado
         ],
         executablePath: detectChromiumPath(),
+        protocolTimeout: 120000, // Increase from default 30s to 120s
       },
       takeoverOnConflict: true,
       takeoverTimeoutMs: 0,
@@ -422,12 +423,20 @@ class WhatsAppService {
   async getLiveChats(): Promise<any[]> {
     if (!this.isReady || !this.client) return [];
     try {
-      const chats = await this.client.getChats();
+      const chats = await Promise.race([
+        this.client.getChats(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('getChats timeout')), 60000)
+        ),
+      ]);
       return await Promise.all(
         chats.slice(0, 50).map(async (chat: any) => {
           let profilePicUrl: string | null = null;
           try {
-            profilePicUrl = await this.client!.getProfilePicUrl(chat.id._serialized);
+            profilePicUrl = await Promise.race([
+              this.client!.getProfilePicUrl(chat.id._serialized),
+              new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000)),
+            ]);
           } catch {
             profilePicUrl = null;
           }
@@ -462,8 +471,18 @@ class WhatsAppService {
   async getLiveChatMessages(chatId: string, limit = 30): Promise<any[]> {
     if (!this.isReady || !this.client) return [];
     try {
-      const chat = await this.client.getChatById(chatId);
-      const messages = await chat.fetchMessages({ limit });
+      const chat = await Promise.race([
+        this.client.getChatById(chatId),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('getChatById timeout')), 30000)
+        ),
+      ]);
+      const messages = await Promise.race([
+        chat.fetchMessages({ limit }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('fetchMessages timeout')), 60000)
+        ),
+      ]);
       return await Promise.all(
         messages.map(async (msg: any) => {
           let mediaUrl: string | null = null;
@@ -471,7 +490,10 @@ class WhatsAppService {
 
           if (msg.hasMedia) {
             try {
-              const media = await msg.downloadMedia();
+              const media = await Promise.race([
+                msg.downloadMedia(),
+                new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
+              ]);
               if (media) {
                 mediaType = media.mimetype.split('/')[0]; // 'image', 'audio', 'video'
                 mediaUrl = `data:${media.mimetype};base64,${media.data}`;
