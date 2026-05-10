@@ -185,54 +185,54 @@ function ChatListItem({
 function MessageBubble({ msg, isGroup }: { msg: LiveMessage; isGroup: boolean }) {
   const isOut = msg.fromMe;
   return (
-    <div className={`flex ${isOut ? 'justify-end' : 'justify-start'} px-4`}>
+    <div className={`flex ${isOut ? 'justify-end' : 'justify-start'} px-2 sm:px-4`}>
       <div
-        className={`max-w-[65%] min-w-[80px] px-3 py-2 rounded-xl shadow-sm text-sm relative ${
+        className={`max-w-[85%] sm:max-w-[65%] min-w-[60px] px-2 sm:px-3 py-2 rounded-xl shadow-sm text-xs sm:text-sm relative ${
           isOut ? 'bg-[#d9fdd3] rounded-tr-none' : 'bg-white rounded-tl-none text-gray-800'
         }`}
       >
         {/* Group author label */}
         {isGroup && !isOut && msg.author && (
-          <p className="text-xs font-semibold text-teal-600 mb-0.5 truncate">
+          <p className="text-[10px] sm:text-xs font-semibold text-teal-600 mb-0.5 truncate">
             {msg.author.split('@')[0]}
           </p>
         )}
-        {/* Body */}
+        {/* Media */}
         {msg.mediaUrl && msg.mediaType === 'image' ? (
-          <img
-            src={msg.mediaUrl}
-            alt="Imagem"
-            className="max-w-xs rounded-lg mb-1"
+          <img 
+            src={msg.mediaUrl} 
+            alt="Imagem" 
+            className="max-w-[200px] sm:max-w-xs rounded-lg mb-1"
             onError={(e) => {
               (e.target as HTMLImageElement).style.display = 'none';
             }}
           />
         ) : msg.mediaUrl && msg.mediaType === 'audio' ? (
-          <audio
-            controls
-            className="max-w-xs"
+          <audio 
+            controls 
+            className="max-w-[200px] sm:max-w-xs h-8"
             controlsList="nodownload"
           >
             <source src={msg.mediaUrl} />
             Seu navegador não suporta reprodução de áudio.
           </audio>
         ) : msg.mediaUrl && msg.mediaType === 'video' ? (
-          <video
-            controls
-            className="max-w-xs rounded-lg"
+          <video 
+            controls 
+            className="max-w-[200px] sm:max-w-xs rounded-lg"
             controlsList="nodownload"
           >
             <source src={msg.mediaUrl} />
             Seu navegador não suporta reprodução de vídeo.
           </video>
         ) : msg.body && msg.body !== '[Mídia]' ? (
-          <p className="whitespace-pre-wrap break-words leading-relaxed">{msg.body}</p>
+          <p className="whitespace-pre-wrap break-words leading-relaxed text-xs sm:text-sm">{msg.body}</p>
         ) : msg.hasMedia ? (
-          <p className="text-gray-400 italic text-xs">📎 Mídia</p>
+          <p className="text-gray-400 italic text-[10px] sm:text-xs">📎 Mídia</p>
         ) : null}
         {/* Footer */}
         <div className="flex items-center justify-end gap-1 mt-1">
-          <span className="text-[10px] text-gray-400">{formatMessageTime(msg.timestamp)}</span>
+          <span className="text-[9px] sm:text-[10px] text-gray-400">{formatMessageTime(msg.timestamp)}</span>
           {isOut && <AckIcon ack={msg.ack} />}
         </div>
       </div>
@@ -577,45 +577,45 @@ export default function WhatsApp() {
           <>
             {/* Chat Header */}
             <div
-              className="flex items-center gap-3 px-4 py-2.5 shrink-0"
+              className="flex items-center gap-2 sm:gap-3 px-2 sm:px-4 py-2 shrink-0"
               style={{ background: '#202c33' }}
             >
               <button
                 onClick={() => setShowSidebar(true)}
                 className="md:hidden p-1.5 hover:bg-white/10 rounded-full text-gray-400 hover:text-white transition-colors"
               >
-                <ChevronLeft size={20} />
+                <ChevronLeft size={18} />
               </button>
               <Avatar
                 name={activeChat.name}
                 isGroup={activeChat.isGroup}
                 profilePicUrl={activeChat.profilePicUrl}
-                size="md"
+                size="sm"
               />
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-white text-sm truncate">{activeChat.name}</p>
-                <p className="text-xs text-gray-400">
+                <p className="font-semibold text-white text-xs sm:text-sm truncate">{activeChat.name}</p>
+                <p className="text-[10px] sm:text-xs text-gray-400">
                   {activeChat.isGroup
                     ? `${activeChat.members ?? 0} participantes`
                     : activeChat.id.split('@')[0]}
                 </p>
               </div>
-              <div className="flex items-center gap-1">
-                <button className="p-2 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="Chamada de voz">
-                  <Phone size={18} />
+              <div className="flex items-center gap-0.5 sm:gap-1">
+                <button className="p-1.5 sm:p-2 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="Chamada de voz">
+                  <Phone size={14} className="sm:w-[18px] sm:h-[18px]" />
                 </button>
-                <button className="p-2 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="Chamada de vídeo">
-                  <Video size={18} />
+                <button className="p-1.5 sm:p-2 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="Chamada de vídeo">
+                  <Video size={14} className="sm:w-[18px] sm:h-[18px]" />
                 </button>
                 <button
                   onClick={() => loadMessages(activeChat)}
-                  className="p-2 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                  className="p-1.5 sm:p-2 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
                   title="Recarregar mensagens"
                 >
-                  <RefreshCw size={16} className={loadingMessages ? 'animate-spin' : ''} />
+                  <RefreshCw size={14} className={`sm:w-4 sm:h-4 ${loadingMessages ? 'animate-spin' : ''}`} />
                 </button>
-                <button className="p-2 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="Mais opções">
-                  <MoreVertical size={18} />
+                <button className="p-1.5 sm:p-2 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="Mais opções">
+                  <MoreVertical size={14} className="sm:w-[18px] sm:h-[18px]" />
                 </button>
               </div>
             </div>
@@ -623,7 +623,7 @@ export default function WhatsApp() {
             {/* Messages Area */}
             <div
               ref={scrollRef}
-              className="flex-1 overflow-y-auto py-4 space-y-1"
+              className="flex-1 overflow-y-auto py-2 sm:py-4 space-y-1 px-1 sm:px-0"
               style={{
                 backgroundImage:
                   'url("data:image/svg+xml,%3Csvg width=\'400\' height=\'400\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Crect width=\'400\' height=\'400\' fill=\'%230b141a\'/%3E%3C/svg%3E")',
@@ -675,28 +675,27 @@ export default function WhatsApp() {
 
             {/* Input Area */}
             <div
-              className="px-4 py-3 shrink-0"
+              className="px-2 sm:px-4 py-2 sm:py-3 shrink-0"
               style={{ background: '#202c33' }}
             >
-              <form onSubmit={handleSend} className="flex items-end gap-2">
+              <form onSubmit={handleSend} className="flex items-end gap-1 sm:gap-2">
                 <button
                   type="button"
-                  className="p-2.5 rounded-full text-gray-400 hover:text-white hover:bg-white/10 transition-colors shrink-0"
+                  className="p-1.5 sm:p-2.5 rounded-full text-gray-400 hover:text-white hover:bg-white/10 transition-colors shrink-0"
                   title="Emoji"
                 >
-                  <SmilePlus size={20} />
+                  <SmilePlus size={16} className="sm:w-5 sm:h-5" />
                 </button>
 
                 <textarea
                   ref={inputRef}
-                  className="flex-1 rounded-lg px-4 py-2.5 text-sm outline-none resize-none max-h-32 text-white placeholder-gray-500"
-                  style={{ background: '#2a3942', minHeight: '42px' }}
+                  className="flex-1 rounded-lg px-2 sm:px-4 py-2 text-xs sm:text-sm outline-none resize-none max-h-32 text-white placeholder-gray-500"
+                  style={{ background: '#2a3942', minHeight: '36px' }}
                   placeholder="Digite uma mensagem"
                   value={text}
                   rows={1}
                   onChange={(e) => {
                     setText(e.target.value);
-                    // Auto-resize
                     e.target.style.height = 'auto';
                     e.target.style.height = Math.min(e.target.scrollHeight, 128) + 'px';
                   }}
@@ -711,14 +710,14 @@ export default function WhatsApp() {
                 <button
                   type="submit"
                   disabled={sending || !text.trim()}
-                  className="w-10 h-10 rounded-full flex items-center justify-center transition-all shrink-0 disabled:opacity-40"
+                  className="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center transition-all shrink-0 disabled:opacity-40"
                   style={{ background: '#25d366' }}
                   title="Enviar mensagem"
                 >
                   {sending ? (
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <div className="w-3 h-3 sm:w-4 sm:h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   ) : (
-                    <Send size={16} className="text-white" />
+                    <Send size={14} className="sm:w-4 sm:h-4 text-white" />
                   )}
                 </button>
               </form>
