@@ -143,6 +143,59 @@ export const setAIAutoResponseOption = (number: 1 | 2 | 3 | 4, response: string)
 export const handleAIAutoResponseMessage = (data: { contactId: string; message: string }) =>
   api.post('/automation/ai-response/handle-message', data).then((r) => r.data);
 
+// ─── OpenAI Auto-Response ─────────────────────────────────────────────────────
+
+export const getOpenAIAutoResponseConfig = () =>
+  api.get('/openai-autoresponse/config').then((r) => r.data);
+
+export const updateOpenAIAutoResponseConfig = (data: {
+  enabled?: boolean;
+  systemPrompt?: string;
+  temperature?: number;
+  maxTokens?: number;
+}) => api.put('/openai-autoresponse/config', data).then((r) => r.data);
+
+export const getOpenAIAutoResponseRules = () =>
+  api.get('/openai-autoresponse/rules').then((r) => r.data);
+
+export const createOpenAIAutoResponseRule = (data: {
+  keyword: string;
+  response: string;
+  priority?: number;
+}) => api.post('/openai-autoresponse/rules', data).then((r) => r.data);
+
+export const updateOpenAIAutoResponseRule = (id: string, data: any) =>
+  api.put(`/openai-autoresponse/rules/${id}`, data).then((r) => r.data);
+
+export const deleteOpenAIAutoResponseRule = (id: string) =>
+  api.delete(`/openai-autoresponse/rules/${id}`).then((r) => r.data);
+
+export const getOpenAIAutoResponseConversations = () =>
+  api.get('/openai-autoresponse/conversations').then((r) => r.data);
+
+export const getOpenAIAutoResponseConversation = (chatId: string, contactName?: string) =>
+  api
+    .get(`/openai-autoresponse/conversations/${encodeURIComponent(chatId)}`, {
+      params: contactName ? { contactName } : undefined,
+    })
+    .then((r) => r.data);
+
+export const getOpenAIAutoResponsePendingApprovals = () =>
+  api.get('/openai-autoresponse/pending-approvals').then((r) => r.data);
+
+export const approveOpenAIAutoResponseMessage = (messageId: string) =>
+  api.post(`/openai-autoresponse/approve/${messageId}`).then((r) => r.data);
+
+export const rejectOpenAIAutoResponseMessage = (messageId: string) =>
+  api.post(`/openai-autoresponse/reject/${messageId}`).then((r) => r.data);
+
+export const testOpenAIAutoResponse = (data: {
+  message: string;
+  chatId: string;
+  contactName?: string;
+  requiresApproval?: boolean;
+}) => api.post('/openai-autoresponse/test', data).then((r) => r.data);
+
 // Agendamentos
 export const getSchedules = (params?: any) => api.get('/schedules', { params }).then((r) => r.data);
 export const createSchedule = (fd: FormData) => api.post('/schedules', fd).then((r) => r.data);

@@ -174,6 +174,7 @@ class WhatsAppService {
 
       // Se a mensagem for do ALUNO, passa para o robô decidir se responde
       const { autoResponseService } = await import('./autoresponse.service');
+      const { openaiAutoResponseService } = await import('./openaiAutoResponse.service');
       const messageBody = msg.body || (msg.hasMedia ? '[MEDIA]' : '');
       
       // FILTRO DE SEGURANÇA: Ignora mensagens que não devem disparar o robô
@@ -189,6 +190,25 @@ class WhatsAppService {
 
       // A função processIncomingMessage agora lida com o log se isEnabled for false
       autoResponseService.processIncomingMessage(message.contactId, phone, messageBody).catch(console.error);
+
+      // OpenAI-powered auto-response (runs when enabled in AutoResponseConfig)
+      openaiAutoResponseService.getConfig().then(async (cfg) => {
+        if (!cfg.enabled) return;
+        try {
+          const waContact = await msg.getContact();
+          const contactName = waContact.pushname || waContact.name || phone;
+          const { response, type } = await openaiAutoResponseService.processMessage(
+            messageBody,
+            msg.from,
+            contactName,
+            false // set to true to require manual approval before sending
+          );
+          await msg.reply(response);
+          console.log(`[OpenAIAutoResponse] Sent ${type} response to ${msg.from}`);
+        } catch (err) {
+          console.error('[OpenAIAutoResponse] Error processing message:', err);
+        }
+      }).catch(console.error);
     } catch (err) {
       console.error('[WhatsApp] Erro ao processar mensagem:', err);
     }

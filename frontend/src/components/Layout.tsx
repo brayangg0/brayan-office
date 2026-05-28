@@ -5,7 +5,7 @@ import { io } from 'socket.io-client';
 import { getWhatsAppStatus } from '../services/api';
 import {
   LayoutDashboard, Users, GraduationCap, Megaphone,
-  FileText, Calendar, Smartphone, Wifi, WifiOff, Menu, X, Zap, Send, MessageCircle
+  FileText, Calendar, Smartphone, Wifi, WifiOff, Menu, X, Zap, Send, MessageCircle, Bot
 } from 'lucide-react';
 
 export const socket = io({ path: '/socket.io' });
@@ -22,6 +22,7 @@ const navItems = [
   { to: '/sequences', icon: Send, label: 'Sequências', end: false },
   { to: '/whatsapp/setup', icon: Smartphone, label: 'Config. WA', end: true },
   { to: '/automation', icon: Zap, label: 'Automação', end: false },
+  { to: '/auto-response', icon: Bot, label: 'IA Resposta', end: false },
 ];
 
 export default function Layout() {

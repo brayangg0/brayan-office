@@ -295,6 +295,68 @@ model WhatsAppSession {
   updatedAt   DateTime @updatedAt
 }
 
+// ─── OpenAI Auto-Response ────────────────────────────────────────────────────
+model AutoResponseConfig {
+  id            String   @id @default(cuid())
+  enabled       Boolean  @default(true)
+  systemPrompt  String   @db.Text
+  temperature   Float    @default(0.7)
+  maxTokens     Int      @default(150)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  rules         AutoResponseRule[]
+  conversations AutoResponseConversation[]
+}
+
+model AutoResponseRule {
+  id        String             @id @default(cuid())
+  configId  String
+  config    AutoResponseConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+
+  keyword   String
+  response  String   @db.Text
+  priority  Int      @default(0)
+  enabled   Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([configId])
+}
+
+model AutoResponseConversation {
+  id          String             @id @default(cuid())
+  configId    String
+  config      AutoResponseConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+
+  chatId      String
+  contactName String
+
+  messages    AutoResponseMessage[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([configId])
+  @@index([chatId])
+}
+
+model AutoResponseMessage {
+  id               String                   @id @default(cuid())
+  conversationId   String
+  conversation     AutoResponseConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  role             String   // "user" or "assistant"
+  content          String   @db.Text
+  requiresApproval Boolean  @default(false)
+  approved         Boolean?
+
+  createdAt        DateTime @default(now())
+
+  @@index([conversationId])
+}
+
 // ─── AI Auto-Response ────────────────────────────────────────────────────────
 model AIAutoResponse {
   id             String   @id @default(uuid())

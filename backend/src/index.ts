@@ -27,6 +27,7 @@ import templateRoutes from './routes/templates';
 import scheduleRoutes from './routes/schedules';
 import automationRoutes from './routes/automation';
 import sequenceRoutes from './routes/sequences';
+import openaiAutoResponseRoutes from './routes/openaiAutoResponse';
 import { setSocketIO } from './services/whatsapp.service';
 
 const app = express();
@@ -61,6 +62,7 @@ app.use('/api/templates',   templateRoutes);
 app.use('/api/schedules',   scheduleRoutes);
 app.use('/api/automation',  automationRoutes);
 app.use('/api/sequences',   sequenceRoutes);
+app.use('/api/openai-autoresponse', openaiAutoResponseRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) => {
