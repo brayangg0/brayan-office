@@ -11,6 +11,7 @@ import WhatsAppSetup from './pages/WhatsAppSetup';
 import WhatsApp from './pages/WhatsApp';
 import Automation from './pages/Automation';
 import Messages from './pages/Messages';
+import AutoResponse from './pages/AutoResponse';
 
 export default function App() {
   return (
@@ -29,6 +30,7 @@ export default function App() {
           <Route path="whatsapp" element={<WhatsApp />} />
           <Route path="whatsapp/setup" element={<WhatsAppSetup />} />
           <Route path="automation" element={<Automation />} />
+          <Route path="auto-response" element={<AutoResponse />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
