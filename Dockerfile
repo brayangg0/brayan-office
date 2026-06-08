@@ -3,11 +3,11 @@ FROM node:20-slim AS frontend-builder
 
 WORKDIR /app/frontend
 
-# Install dependencies first for better layer caching
+# Instala dependências primeiro para melhor cache de camadas
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 
-# Copy source and build
+# Copia o código fonte e faz o build
 COPY frontend/ ./
 RUN npm run build
 
@@ -17,21 +17,21 @@ FROM node:20-slim AS backend-builder
 
 WORKDIR /app/backend
 
-# Install dependencies first for better layer caching
+# Instala dependências primeiro para melhor cache de camadas
 COPY backend/package.json backend/package-lock.json ./
 RUN npm ci
 
-# Copy source and build
+# Copia o código fonte e faz o build
 COPY backend/ ./
 RUN npx prisma generate
 RUN npm run build
 
 
-# ─── Stage 3: Production image ────────────────────────────────────────────────
+# ─── Stage 3: Imagem de produção ────────────────────────────────────────────────
 FROM node:20-slim AS production
 
-# Install Chromium, OpenSSL (required by Prisma), and all system dependencies
-# required by whatsapp-web.js / Puppeteer
+# Instala Chromium, OpenSSL (necessário para o Prisma) e todas as dependências
+# de sistema exigidas pelo whatsapp-web.js / Puppeteer
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     openssl \
@@ -65,35 +65,35 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xdg-utils \
   && rm -rf /var/lib/apt/lists/*
 
-# Tell Puppeteer/whatsapp-web.js to use the system Chromium
+# Indica ao Puppeteer/whatsapp-web.js para usar o Chromium do sistema
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV CHROMIUM_PATH=/usr/bin/chromium
 
 WORKDIR /app/backend
 
-# Install production dependencies only
+# Instala apenas dependências de produção
 COPY backend/package.json backend/package-lock.json ./
 RUN npm ci --omit=dev
 
-# Copy compiled backend from builder stage
+# Copia o backend compilado do estágio de build
 COPY --from=backend-builder /app/backend/dist ./dist
 
-# Copy Prisma schema and generated client
+# Copia o schema do Prisma e o cliente gerado
 COPY --from=backend-builder /app/backend/prisma ./prisma
 COPY --from=backend-builder /app/backend/node_modules/.prisma ./node_modules/.prisma
 
-# Copy built frontend so the backend can serve it as static files
-# Backend resolves: path.join(process.cwd(), '..', 'frontend', 'dist')
+# Copia o frontend compilado para que o backend possa servi-lo como arquivos estáticos
+# O backend resolve: path.join(process.cwd(), '..', 'frontend', 'dist')
 COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
 
-# Expose backend port
+# Expõe a porta do backend
 EXPOSE 3333
 
 ENV NODE_ENV=production
 
-# Healthcheck: poll /api/health every 30s, allow 60s start-up grace period
+# Healthcheck: consulta /api/health a cada 30s, com 60s de período inicial de espera
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3333/api/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1); }).on('error', () => process.exit(1));"
 
-# Run DB migration then start the server; log any startup errors to stderr
-CMD ["sh", "-c", "echo '[CMD] Running prisma db push...' && npx prisma db push && echo '[CMD] Starting server...' && node dist/index.js"]
+# Executa a migração do banco e depois inicia o servidor; registra erros de inicialização no stderr
+CMD ["sh", "-c", "echo '[CMD] Executando prisma db push...' && npx prisma db push && echo '[CMD] Iniciando servidor...' && node dist/index.js"]
