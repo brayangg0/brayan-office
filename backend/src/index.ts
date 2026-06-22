@@ -35,7 +35,9 @@ const server = http.createServer(app);
 
 // Socket.IO para comunicação em tempo real (QR Code, status WhatsApp)
 export const io = new SocketIO(server, {
-  cors: { origin: '*', credentials: true } // Alterado para permitir ngrok/rede
+  path: '/socket.io',
+  cors: { origin: '*', credentials: true },
+  transports: ['websocket', 'polling']
 });
 
 // Middlewares
@@ -105,9 +107,12 @@ async function bootstrap() {
     // Passa o Socket.IO para o serviço WhatsApp
     setSocketIO(io);
 
-    // Inicializa WhatsApp em background
-    whatsappService.initialize();
-    console.log('[WhatsApp] Serviço iniciado');
+    if (process.env.WHATSAPP_AUTO_START === 'true') {
+      whatsappService.initialize();
+      console.log('[WhatsApp] Servico iniciado automaticamente');
+    } else {
+      console.log('[WhatsApp] Auto-start desativado. Conecte manualmente pela tela Config. WA.');
+    }
 
     // Inicializa o scheduler de mensagens
     await schedulerService.initialize();
@@ -133,6 +138,32 @@ async function bootstrap() {
 }
 
 bootstrap();
+
+process.on('uncaughtException', (error: any) => {
+  const message = String(error?.message || error || '');
+  if (message.includes('.wwebjs_auth') && message.includes('EBUSY')) {
+    console.error('[WhatsApp] Sessao local travada pelo Chromium. O servidor continuara ativo; reinicie a conexao do WhatsApp.');
+    return;
+  }
+
+  const transientWhatsAppErrors = [
+    'Execution context was destroyed',
+    'Protocol error',
+    'Target closed',
+    'Session closed',
+  ];
+
+  if (transientWhatsAppErrors.some((item) => message.includes(item))) {
+    console.error(`[WhatsApp] Erro transitorio do Chromium ignorado: ${message}`);
+    whatsappService.destroy().catch((destroyErr) => {
+      console.error('[WhatsApp] Erro ao limpar cliente apos falha transitoria:', destroyErr);
+    });
+    return;
+  }
+
+  console.error('[UncaughtException]', error);
+  process.exit(1);
+});
 
 // Graceful shutdown
 process.on('SIGINT', async () => {

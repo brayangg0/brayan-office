@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { openaiAutoResponseService } from '../services/openaiAutoResponse.service';
+import { whatsappService } from '../services/whatsapp.service';
 
 const router = Router();
 
@@ -114,7 +115,10 @@ router.get('/pending-approvals', async (_req, res) => {
 router.post('/approve/:messageId', async (req, res) => {
   try {
     const message = await openaiAutoResponseService.approveMessage(req.params.messageId);
-    res.json(message);
+    if (message.role === 'assistant' && message.conversation?.chatId) {
+      await whatsappService.sendLiveMessage(message.conversation.chatId, message.content);
+    }
+    res.json({ ...message, sent: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message || 'Failed to approve message' });
   }

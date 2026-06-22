@@ -9,15 +9,72 @@ const router = Router();
 // GET /api/whatsapp/status
 router.get('/status', async (_req, res) => {
   const session = await prisma.whatsAppSession.findUnique({ where: { id: 'default' } });
-  const { isReady } = whatsappService.getStatus();
-  res.json({ ...session, isReady });
+  const status = whatsappService.getStatus();
+  const isReady = status.isReady;
+  const qrAgeMs = session?.updatedAt ? Date.now() - new Date(session.updatedAt).getTime() : Number.POSITIVE_INFINITY;
+  const hasFreshQr = !!session?.qrCode && session.status === 'qr_ready' && qrAgeMs < 45_000;
+  const effectiveStatus = isReady
+    ? (session?.status || 'connected')
+    : status.isAuthenticated
+      ? 'authenticated'
+      : hasFreshQr
+        ? 'qr_ready'
+        : (status.hasClient || status.isInitializing ? 'connecting' : 'disconnected');
+  res.json({
+    ...session,
+    status: effectiveStatus,
+    isReady,
+    isAuthenticated: status.isAuthenticated,
+    isInitializing: status.isInitializing,
+    lastError: status.lastError,
+    retryAfterSeconds: status.retryAfterSeconds,
+  });
 });
 
-// GET /api/whatsapp/qr - Obtém QR code atual
+// GET /api/whatsapp/qr - Obtém QR code atual ou força novo
 router.get('/qr', async (_req, res) => {
-  const session = await prisma.whatsAppSession.findUnique({ where: { id: 'default' } });
-  if (!session?.qrCode) return res.status(404).json({ error: 'QR Code não disponível' });
-  res.json({ qr: session.qrCode });
+  try {
+    const session = await prisma.whatsAppSession.findUnique({ where: { id: 'default' } });
+    const qrAgeMs = session?.updatedAt ? Date.now() - new Date(session.updatedAt).getTime() : Number.POSITIVE_INFINITY;
+    const hasFreshQr = !!session?.qrCode && session.status === 'qr_ready' && qrAgeMs < 45_000;
+
+    if (hasFreshQr) {
+      return res.json({
+        qr: session!.qrCode,
+        expiresIn: Math.max(0, Math.ceil((45_000 - qrAgeMs) / 1000)),
+      });
+    }
+
+    const currentStatus = whatsappService.getStatus();
+    if (currentStatus.isReady) {
+      return res.status(404).json({ error: 'WhatsApp ja esta conectado' });
+    }
+
+    if (currentStatus.retryAfterSeconds > 0) {
+      return res.status(202).json({
+        message: currentStatus.lastError || 'Sessao em recuperacao. Aguarde alguns segundos.',
+        retry: true,
+        retryAfterSeconds: currentStatus.retryAfterSeconds,
+      });
+    }
+
+    if (currentStatus.isInitializing || currentStatus.hasClient) {
+      return res.status(202).json({
+        message: 'Gerando novo QR Code, aguarde alguns segundos...',
+        retry: true,
+      });
+    }
+
+    console.log('[WhatsApp] Iniciando cliente para gerar novo QR Code');
+    setTimeout(() => whatsappService.initialize(), 0);
+    return res.status(202).json({
+      message: 'Gerando novo QR Code, aguarde alguns segundos...',
+      retry: true,
+    });
+  } catch (err: any) {
+    console.error('[WhatsApp] Erro ao obter QR:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // POST /api/whatsapp/restart

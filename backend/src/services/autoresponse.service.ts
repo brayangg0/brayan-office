@@ -58,6 +58,96 @@ export function fuzzyMatchPhrase(message: string, triggerPhrase: string): boolea
 }
 // -----------------------------------
 
+function normalizeMenuText(text: string): string {
+  return removeAccents(text)
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractMenuOption(message: string): number | null {
+  const normalized = normalizeMenuText(message);
+  const compact = normalized.replace(/\s+/g, '');
+
+  const directMatch = compact.match(/^(?:opcao|op|alternativa|numero|n)?([1-4])$/);
+  if (directMatch) return Number(directMatch[1]);
+
+  const looseMatch = normalized.match(/\b(?:opcao|op|alternativa|numero|n)?\s*([1-4])\b/);
+  if (looseMatch) return Number(looseMatch[1]);
+
+  const wordOptions: Record<string, number> = {
+    um: 1,
+    uma: 1,
+    primeiro: 1,
+    primeira: 1,
+    dois: 2,
+    segundo: 2,
+    segunda: 2,
+    tres: 3,
+    terceiro: 3,
+    terceira: 3,
+    quatro: 4,
+    quarto: 4,
+    quarta: 4,
+  };
+
+  for (const [word, option] of Object.entries(wordOptions)) {
+    if (new RegExp(`\\b${word}\\b`).test(normalized)) return option;
+  }
+
+  return null;
+}
+
+function isMenuRequest(message: string): boolean {
+  const normalized = normalizeMenuText(message);
+  return [
+    'menu',
+    'opcoes',
+    'opcao',
+    'atendimento',
+    'ajuda',
+    'ola',
+    'oi',
+    'bom dia',
+    'boa tarde',
+    'boa noite',
+    'voltar',
+    'inicio',
+  ].some((trigger) => fuzzyMatchPhrase(normalized, trigger));
+}
+
+function parseQaRules(rawRules: string | null | undefined): { question: string; answer: string }[] {
+  try {
+    const parsed = JSON.parse(rawRules || '[]');
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .map((rule) => ({
+        question: String(rule?.question || '').trim(),
+        answer: String(rule?.answer || '').trim(),
+      }))
+      .filter((rule) => rule.question && rule.answer);
+  } catch {
+    return [];
+  }
+}
+
+function findQaAnswer(message: string, rawRules: string | null | undefined): string | null {
+  const rules = parseQaRules(rawRules);
+
+  for (const rule of rules) {
+    const variants = rule.question
+      .split(/[,;\n|/]+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    if (variants.some((variant) => fuzzyMatchPhrase(message, variant))) {
+      return rule.answer;
+    }
+  }
+
+  return null;
+}
+
 interface AutoResponseRule {
   id: string;
   trigger: string;
@@ -304,12 +394,11 @@ class AutoResponseService {
       const config = await (prisma as any).aIAutoResponse.findUnique({ where: { id: 'default' } });
       if (!config?.enabled) return false;
 
-      const trimmed = message.trim();
-      const optionNumber = parseInt(trimmed, 10);
-      const isValidOption = [1, 2, 3, 4].includes(optionNumber) && trimmed === String(optionNumber);
-
-      // Check if user has already received the menu
-      const hasReceivedMenu = this.aiMenuSent.get(contactId) || false;
+      const optionNumber = extractMenuOption(message);
+      const isValidOption = optionNumber !== null && [1, 2, 3, 4].includes(optionNumber);
+      const existingState = await (prisma as any).conversationState.findUnique({ where: { contactId } });
+      const hasReceivedMenu = this.aiMenuSent.get(contactId) || !!existingState;
+      const shouldSendMenu = !hasReceivedMenu || isMenuRequest(message);
 
       if (isValidOption) {
         // User selected a valid option
@@ -317,7 +406,9 @@ class AutoResponseService {
         const optionResponse = config[fieldName];
 
         if (!optionResponse) {
-          return false;
+          await whatsappService.sendText(phone, config.welcomeMessage);
+          this.aiMenuSent.set(contactId, true);
+          return true;
         }
 
         await whatsappService.sendText(phone, optionResponse);
@@ -331,8 +422,15 @@ class AutoResponseService {
 
         this.lastBotResponseTime.set(contactId, Date.now());
         return true;
-      } else if (!hasReceivedMenu) {
-        // First message and not a valid option - send the menu
+      }
+
+      const qaAnswer = findQaAnswer(message, config.qaRules);
+      if (qaAnswer) {
+        await whatsappService.sendText(phone, qaAnswer);
+        this.lastBotResponseTime.set(contactId, Date.now());
+        return true;
+      } else if (shouldSendMenu) {
+        // First message or explicit menu request - send the menu.
         await whatsappService.sendText(phone, config.welcomeMessage);
 
         // Mark that menu has been sent

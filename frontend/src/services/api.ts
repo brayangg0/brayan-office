@@ -136,7 +136,11 @@ export const cancelScheduledMessage = (id: string) => api.post(`/automation/sche
 
 // Automação - AI Auto-Response
 export const getAIAutoResponseConfig = () => api.get('/automation/ai-response/config').then((r) => r.data);
-export const enableAIAutoResponse = (data: { enabled: boolean; welcomeMessage: string }) =>
+export const enableAIAutoResponse = (data: {
+  enabled: boolean;
+  welcomeMessage: string;
+  qaRules?: { question: string; answer: string }[];
+}) =>
   api.post('/automation/ai-response/enable', data).then((r) => r.data);
 export const setAIAutoResponseOption = (number: 1 | 2 | 3 | 4, response: string) =>
   api.post(`/automation/ai-response/option/${number}`, { response }).then((r) => r.data);

@@ -97,7 +97,13 @@ class SchedulerService {
   /** Resolve os destinos de uma mensagem agendada */
   private async resolveTargets(msg: any): Promise<{ id: string; isGroup: boolean }[]> {
     const targets: { id: string; isGroup: boolean }[] = [];
-    const tags: string[] = msg.targetTags ? JSON.parse(msg.targetTags) : [];
+    let tags: string[] = [];
+
+    try {
+      tags = msg.targetTags ? JSON.parse(msg.targetTags) : [];
+    } catch (e) {
+      console.error('[Scheduler] Erro ao parsear targetTags:', e);
+    }
 
     switch (msg.targetType) {
       case 'contact':
@@ -123,8 +129,12 @@ class SchedulerService {
         if (tags.length > 0) {
           const all = await prisma.contact.findMany({ where: { status: 'active' } });
           all.forEach((c) => {
-            const ctags: string[] = JSON.parse(c.tags || '[]');
-            if (tags.some((t) => ctags.includes(t))) targets.push({ id: c.phone, isGroup: false });
+            try {
+              const ctags: string[] = JSON.parse(c.tags || '[]');
+              if (tags.some((t) => ctags.includes(t))) targets.push({ id: c.phone, isGroup: false });
+            } catch (e) {
+              console.error('[Scheduler] Erro ao parsear tags do contato:', e);
+            }
           });
         }
         break;

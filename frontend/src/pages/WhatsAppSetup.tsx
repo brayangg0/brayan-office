@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { getWhatsAppStatus, getQrCode, syncGroups, restartWhatsApp, logoutWhatsApp, sendMessage, getGroups, toggleWhatsAppGroup } from '../services/api';
@@ -22,6 +22,7 @@ export default function WhatsAppSetup() {
   const [qrExpiresIn, setQrExpiresIn] = useState<number>(0);
   const [sendForm, setSendForm] = useState({ to: '', body: '', type: 'text', isGroup: false });
   const [file, setFile] = useState<File | null>(null);
+  const requestedInitialQrRef = useRef(false);
 
   const { data: status, refetch, isLoading: statusLoading } = useQuery({
     queryKey: ['whatsapp-status'],
@@ -60,13 +61,23 @@ export default function WhatsAppSetup() {
       toast.error('WhatsApp desconectado');
     };
 
+    const handleAuthenticated = () => {
+      setQrImage(null);
+      setLoadingQr(true);
+      setQrExpiresIn(0);
+      refetch();
+      toast.success('QR aceito. Finalizando conexao...');
+    };
+
     socket.on('whatsapp:qr', handleQr);
     socket.on('whatsapp:ready', handleReady);
+    socket.on('whatsapp:authenticated', handleAuthenticated);
     socket.on('whatsapp:disconnected', handleDisconnected);
 
     return () => {
       socket.off('whatsapp:qr', handleQr);
       socket.off('whatsapp:ready', handleReady);
+      socket.off('whatsapp:authenticated', handleAuthenticated);
       socket.off('whatsapp:disconnected', handleDisconnected);
     };
   }, [refetch]);
@@ -97,8 +108,8 @@ export default function WhatsAppSetup() {
         setQrExpiresIn(prev => {
           if (prev <= 1) {
             // Auto-refresh QR
-            reloadQrMut.mutate();
-            return 30;
+            console.log('⏰ QR code expirado, recarregando...');
+            return 0;
           }
           return prev - 1;
         });
@@ -115,6 +126,9 @@ export default function WhatsAppSetup() {
       setQrImage(null);
       setLoadingQr(true);
       toast.success('🔄 Reiniciando WhatsApp...');
+    },
+    onSettled: () => {
+      setLoadingQr(false);
     }
   });
 
@@ -128,13 +142,56 @@ export default function WhatsAppSetup() {
   });
 
   const reloadQrMut = useMutation({
-    mutationFn: () => getQrCode(),
-    onSuccess: (d) => {
-      setQrImage(d.qr);
-      toast.success('✅ QR Code recarregado!');
+    mutationFn: async () => {
+      try {
+        setLoadingQr(true);
+        const result = await getQrCode();
+        if (result.qr) {
+          return result;
+        }
+
+        if (result.retry) {
+          return result;
+        }
+
+        throw new Error(result.error || 'Erro desconhecido');
+      } catch (err: any) {
+        throw new Error(err.response?.data?.error || err.message || 'Erro ao recarregar QR');
+      }
     },
-    onError: () => toast.error('❌ Erro ao recarregar QR')
+    onSuccess: (d) => {
+      if (d.qr) {
+        setQrImage(d.qr);
+        setQrExpiresIn(d.expiresIn || 45);
+        toast.success('✅ QR Code recarregado!');
+      }
+    },
+    onError: (err: any) => {
+      console.error('Erro ao recarregar QR:', err);
+      toast.error(err.message || '❌ Erro ao recarregar QR');
+    },
+    onSettled: () => {
+      setLoadingQr(false);
+    }
   });
+
+  useEffect(() => {
+    if (status?.status === 'connected') {
+      requestedInitialQrRef.current = false;
+      return;
+    }
+
+    if (
+      status?.status === 'disconnected' &&
+      !qrImage &&
+      !loadingQr &&
+      !reloadQrMut.isPending &&
+      !requestedInitialQrRef.current
+    ) {
+      requestedInitialQrRef.current = true;
+      reloadQrMut.mutate();
+    }
+  }, [status?.status, qrImage, loadingQr, reloadQrMut.isPending]);
 
   const syncMut = useMutation({
     mutationFn: syncGroups,
@@ -170,6 +227,7 @@ export default function WhatsAppSetup() {
   });
 
   const isConnected = status?.status === 'connected';
+  const isConnecting = status?.status === 'authenticated' || status?.status === 'connecting';
 
   return (
     <div className="p-4 md:p-6 space-y-4 md:space-y-6">
@@ -179,16 +237,17 @@ export default function WhatsAppSetup() {
       <div className="card !p-4 md:!p-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4 md:mb-6">
           <div className="flex items-center gap-3 md:gap-4">
-            <div className={`p-2 md:p-3 rounded-xl ${isConnected ? 'bg-green-100' : status?.status === 'qr_ready' ? 'bg-yellow-100' : 'bg-red-100'} shrink-0`}>
-              <Smartphone size={20} className={`md:w-6 md:h-6 ${isConnected ? 'text-green-600' : status?.status === 'qr_ready' ? 'text-yellow-600' : 'text-red-500'}`} />
+            <div className={`p-2 md:p-3 rounded-xl ${isConnected ? 'bg-green-100' : status?.status === 'qr_ready' || isConnecting ? 'bg-yellow-100' : 'bg-red-100'} shrink-0`}>
+              <Smartphone size={20} className={`md:w-6 md:h-6 ${isConnected ? 'text-green-600' : status?.status === 'qr_ready' || isConnecting ? 'text-yellow-600' : 'text-red-500'}`} />
             </div>
             <div>
               <p className="font-semibold text-sm md:text-lg">
                 {isConnected ? '✅ Conectado' :
+                  isConnecting ? 'Finalizando conexao' :
                   status?.status === 'qr_ready' ? '⏳ Aguardando Escaneamento' :
                   '❌ Desconectado'}
               </p>
-              {isConnected && <p className="text-xs md:text-sm text-gray-500">📱 Número: +{status?.phone}</p>}
+              {isConnected && <p className="text-xs md:text-sm text-gray-500">📱 Número: +{status?.phone} • grupos sincronizam apenas pelo botão</p>}
               {status?.status === 'qr_ready' && <p className="text-xs md:text-sm text-yellow-600">⏱️ QR válido por 30 segundos</p>}
             </div>
           </div>
@@ -222,6 +281,17 @@ export default function WhatsAppSetup() {
               >
                 <LogOut size={14} className={logoutMut.isPending ? 'animate-spin' : ''} />
                 <span>Sair</span>
+              </button>
+            )}
+            {!isConnected && (
+              <button
+                onClick={() => logoutMut.mutate()}
+                className="btn-secondary flex items-center gap-2 py-2 px-3 text-xs md:text-sm text-red-600 hover:bg-red-50 border-red-200"
+                disabled={logoutMut.isPending}
+                title="Limpar a sessão local e gerar um QR Code novo"
+              >
+                <LogOut size={14} className={logoutMut.isPending ? 'animate-spin' : ''} />
+                <span>Limpar sessão</span>
               </button>
             )}
           </div>
@@ -273,6 +343,7 @@ export default function WhatsAppSetup() {
             <RefreshCw size={14} className={`inline mr-1 ${syncMut.isPending ? 'animate-spin' : ''}`} /> Sincronizar Grupos
           </button>
         </div>
+        <p className="text-xs text-gray-500 mb-3">Para conectar mais rápido, os grupos não são sincronizados automaticamente após o QR. Use este botão só quando precisar atualizar a lista.</p>
         {groups && groups.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {groups.map((g: any) => (

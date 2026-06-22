@@ -19,10 +19,11 @@ import {
 } from '../services/api';
 import toast from 'react-hot-toast';
 import { Plus, Trash2, Send, Clock, MessageSquare, Zap, Edit2, Bot, Save, Eye } from 'lucide-react';
+import AutoResponse from './AutoResponse';
 
 export default function Automation() {
   const qc = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'responses' | 'campaigns' | 'messages'>('responses');
+  const [activeTab, setActiveTab] = useState<'responses' | 'openai' | 'campaigns' | 'messages'>('responses');
 
   // === AUTORRESPONSE ===
   const [editTemplateId, setEditTemplateId] = useState<string | null>(null);
@@ -66,6 +67,7 @@ export default function Automation() {
   const [aiEnabled, setAiEnabled] = useState(false);
   const [aiWelcome, setAiWelcome] = useState(DEFAULT_WELCOME);
   const [aiOptions, setAiOptions] = useState({ 1: '', 2: '', 3: '', 4: '' });
+  const [aiQaRules, setAiQaRules] = useState<{ question: string; answer: string }[]>([]);
   const [showAiPreview, setShowAiPreview] = useState(false);
 
   const { data: aiConfig } = useQuery({
@@ -83,37 +85,43 @@ export default function Automation() {
         3: aiConfig.options?.[3] || '',
         4: aiConfig.options?.[4] || '',
       });
+      setAiQaRules(Array.isArray(aiConfig.qaRules) ? aiConfig.qaRules : []);
     }
   }, [aiConfig]);
 
   const saveAIConfigMut = useMutation({
     mutationFn: async () => {
       // Save enable/welcome config
-      await enableAIAutoResponse({ enabled: aiEnabled, welcomeMessage: aiWelcome });
+      await enableAIAutoResponse({
+        enabled: aiEnabled,
+        welcomeMessage: aiWelcome,
+        qaRules: aiQaRules,
+      });
       // Save each option response
       const optionEntries = ([1, 2, 3, 4] as const);
       for (const num of optionEntries) {
-        if (aiOptions[num]) {
-          await setAIAutoResponseOption(num, aiOptions[num]);
-        }
+        await setAIAutoResponseOption(num, aiOptions[num] || '');
       }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['ai-autoresponse-config'] });
-      toast.success('Configuração de AI salva com sucesso!');
+      toast.success('Menu automático salvo com sucesso!');
     },
-    onError: (err: any) => toast.error(err.response?.data?.error || 'Erro ao salvar configuração de AI'),
+    onError: (err: any) => toast.error(err.response?.data?.error || 'Erro ao salvar menu automático'),
   });
 
   // === CAMPANHAS AGENDADAS ===
   const [newCampaign, setNewCampaign] = useState({
     name: '',
     description: '',
+    templateId: '',
     targetType: 'contacts',
     targetTags: [] as string[],
     targetGroups: [] as string[],
     scheduledAt: new Date(Date.now() + 3600000).toISOString(),
   });
+  const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
+  const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
 
   const { data: campaigns } = useQuery({ queryKey: ['automation-campaigns'], queryFn: getAutomationCampaigns });
   const { data: contacts } = useQuery({ queryKey: ['contacts', { limit: 1000 }], queryFn: () => getContacts({ limit: 1000 }) });
@@ -123,8 +131,17 @@ export default function Automation() {
   const createCampaignMut = useMutation({
     mutationFn: async () => {
       if (!newCampaign.name) throw new Error('Nome é obrigatório');
+      if (!newCampaign.templateId) throw new Error('Template é obrigatório');
+      if (newCampaign.targetType === 'contacts' && selectedContacts.length === 0) {
+        throw new Error('Selecione pelo menos um contato');
+      }
+      if (newCampaign.targetType === 'groups' && selectedGroups.length === 0) {
+        throw new Error('Selecione pelo menos um grupo');
+      }
       return createAutomationCampaign({
         ...newCampaign,
+        targetContacts: newCampaign.targetType === 'contacts' ? selectedContacts : [],
+        targetGroups: newCampaign.targetType === 'groups' ? selectedGroups : [],
         userId: 'default',
       });
     },
@@ -133,14 +150,20 @@ export default function Automation() {
       setNewCampaign({
         name: '',
         description: '',
+        templateId: '',
         targetType: 'contacts',
         targetTags: [],
         targetGroups: [],
         scheduledAt: new Date(Date.now() + 3600000).toISOString(),
       });
+      setSelectedContacts([]);
+      setSelectedGroups([]);
       toast.success('Campanha criada!');
     },
-    onError: (err: any) => toast.error(err.response?.data?.error || 'Erro ao criar'),
+    onError: (err: any) => {
+      const message = err.message || err.response?.data?.error || 'Erro ao criar campanha';
+      toast.error(message);
+    },
   });
 
   const sendCampaignMut = useMutation({
@@ -165,7 +188,7 @@ export default function Automation() {
 
       {/* Tabs */}
       <div className="flex gap-1 md:gap-2 border-b overflow-x-auto">
-        {['responses', 'campaigns', 'messages'].map(tab => (
+        {['responses', 'openai', 'campaigns', 'messages'].map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab as any)}
@@ -175,11 +198,16 @@ export default function Automation() {
               }`}
           >
             {tab === 'responses' && 'Autorresponse'}
+            {tab === 'openai' && 'IA OpenAI'}
             {tab === 'campaigns' && 'Campanhas'}
             {tab === 'messages' && 'Agendadas'}
           </button>
         ))}
       </div>
+
+      {activeTab === 'openai' && (
+        <AutoResponse />
+      )}
 
       {/* ─── AUTORRESPONSE ─── */}
       {activeTab === 'responses' && (
@@ -370,7 +398,7 @@ export default function Automation() {
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg md:text-xl font-bold flex items-center gap-2">
                 <Bot size={20} className="text-purple-600" />
-                Menu de Atendimento Automático (AI)
+                Menu de Atendimento Automático
               </h2>
               {/* Enable/Disable Toggle */}
               <label className="flex items-center gap-2 cursor-pointer select-none">
@@ -433,6 +461,85 @@ export default function Automation() {
                     </div>
                   );
                 })}
+              </div>
+
+              <div className="border border-gray-200 rounded-xl p-4 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div>
+                    <h3 className="font-semibold text-gray-800">Perguntas e respostas automáticas</h3>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Cadastre variações de perguntas. Se a mensagem for parecida, o sistema responde sem mostrar o menu.
+                    </p>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setAiQaRules([...aiQaRules, { question: '', answer: '' }])}
+                      className="btn-secondary text-sm flex items-center justify-center gap-2"
+                    >
+                      <Plus size={14} />
+                      Adicionar pergunta
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => saveAIConfigMut.mutate()}
+                      disabled={saveAIConfigMut.isPending}
+                      className="btn-primary text-sm flex items-center justify-center gap-2"
+                    >
+                      <Save size={14} />
+                      {saveAIConfigMut.isPending ? 'Salvando...' : 'Salvar perguntas'}
+                    </button>
+                  </div>
+                </div>
+
+                {aiQaRules.length === 0 ? (
+                  <div className="text-sm text-gray-400 bg-gray-50 rounded-lg p-3">
+                    Nenhuma pergunta cadastrada. Ex: pergunta "valor do curso, quanto custa" e resposta com o preço.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {aiQaRules.map((rule, index) => (
+                      <div key={index} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-start bg-gray-50 rounded-lg p-3">
+                        <div>
+                          <label className="label">Perguntas parecidas</label>
+                          <textarea
+                            className="input text-sm"
+                            rows={3}
+                            placeholder="Ex: valor do curso, quanto custa, preço"
+                            value={rule.question}
+                            onChange={(e) => {
+                              const next = [...aiQaRules];
+                              next[index] = { ...next[index], question: e.target.value };
+                              setAiQaRules(next);
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label className="label">Resposta</label>
+                          <textarea
+                            className="input text-sm"
+                            rows={3}
+                            placeholder="Digite a resposta que será enviada"
+                            value={rule.answer}
+                            onChange={(e) => {
+                              const next = [...aiQaRules];
+                              next[index] = { ...next[index], answer: e.target.value };
+                              setAiQaRules(next);
+                            }}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setAiQaRules(aiQaRules.filter((_, itemIndex) => itemIndex !== index))}
+                          className="btn-secondary text-red-600 hover:bg-red-50 md:mt-6"
+                          title="Remover pergunta"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Actions */}
@@ -512,6 +619,19 @@ export default function Automation() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
+                  <label className="label">Template de mensagem *</label>
+                  <select
+                    className="input"
+                    value={newCampaign.templateId}
+                    onChange={(e) => setNewCampaign({ ...newCampaign, templateId: e.target.value })}
+                  >
+                    <option value="">Selecione um template...</option>
+                    {templates && templates.map((t: any) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
                   <label className="label">Tipo de destino</label>
                   <select
                     className="input"
@@ -523,46 +643,75 @@ export default function Automation() {
                     <option value="all">Todos</option>
                   </select>
                 </div>
-                <div>
-                  <label className="label">Data/Hora de envio</label>
-                  <input
-                    type="datetime-local"
-                    className="input"
-                    value={newCampaign.scheduledAt.slice(0, 16)}
-                    onChange={(e) =>
-                      setNewCampaign({
-                        ...newCampaign,
-                        scheduledAt: new Date(e.target.value).toISOString(),
-                      })
-                    }
-                  />
-                </div>
+              </div>
+
+              <div>
+                <label className="label">Data/Hora de envio</label>
+                <input
+                  type="datetime-local"
+                  className="input"
+                  value={newCampaign.scheduledAt.slice(0, 16)}
+                  onChange={(e) =>
+                    setNewCampaign({
+                      ...newCampaign,
+                      scheduledAt: new Date(e.target.value).toISOString(),
+                    })
+                  }
+                />
               </div>
 
               {newCampaign.targetType === 'contacts' && (
                 <div>
-                  <label className="label">Selecione contatos</label>
-                  <div className="max-h-32 overflow-y-auto border rounded p-2 space-y-1">
-                    {contacts && contacts.slice(0, 20).map((c: any) => (
-                      <label key={c.id} className="flex items-center gap-2 text-sm">
-                        <input type="checkbox" />
-                        <span>{c.name}</span>
-                      </label>
-                    ))}
+                  <label className="label">Selecione contatos ({selectedContacts.length} selecionados)</label>
+                  <div className="max-h-40 overflow-y-auto border rounded p-2 space-y-1 bg-white">
+                    {contacts && contacts.length > 0 ? (
+                      contacts.slice(0, 50).map((c: any) => (
+                        <label key={c.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 p-1 rounded">
+                          <input
+                            type="checkbox"
+                            checked={selectedContacts.includes(c.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedContacts([...selectedContacts, c.id]);
+                              } else {
+                                setSelectedContacts(selectedContacts.filter(id => id !== c.id));
+                              }
+                            }}
+                          />
+                          <span>{c.name}</span>
+                        </label>
+                      ))
+                    ) : (
+                      <p className="text-xs text-gray-400">Nenhum contato disponível</p>
+                    )}
                   </div>
                 </div>
               )}
 
               {newCampaign.targetType === 'groups' && (
                 <div>
-                  <label className="label">Selecione grupos</label>
-                  <div className="max-h-32 overflow-y-auto border rounded p-2 space-y-1">
-                    {groups && groups.filter((g: any) => g.active).map((g: any) => (
-                      <label key={g.groupId} className="flex items-center gap-2 text-sm">
-                        <input type="checkbox" />
-                        <span>{g.name} ({g.members} membros)</span>
-                      </label>
-                    ))}
+                  <label className="label">Selecione grupos ({selectedGroups.length} selecionados)</label>
+                  <div className="max-h-40 overflow-y-auto border rounded p-2 space-y-1 bg-white">
+                    {groups && groups.filter((g: any) => g.active).length > 0 ? (
+                      groups.filter((g: any) => g.active).map((g: any) => (
+                        <label key={g.groupId} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 p-1 rounded">
+                          <input
+                            type="checkbox"
+                            checked={selectedGroups.includes(g.groupId)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedGroups([...selectedGroups, g.groupId]);
+                              } else {
+                                setSelectedGroups(selectedGroups.filter(id => id !== g.groupId));
+                              }
+                            }}
+                          />
+                          <span>{g.name} ({g.members} membros)</span>
+                        </label>
+                      ))
+                    ) : (
+                      <p className="text-xs text-gray-400">Nenhum grupo disponível</p>
+                    )}
                   </div>
                 </div>
               )}

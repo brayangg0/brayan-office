@@ -141,6 +141,7 @@ router.post('/campaigns', async (req, res) => {
       description,
       templateId,
       targetType,
+      targetContacts,
       targetTags,
       targetGroups,
       scheduledAt,
@@ -159,7 +160,7 @@ router.post('/campaigns', async (req, res) => {
         templateId,
         userId,
         targetType: targetType || 'contacts',
-        targetTags: JSON.stringify(targetTags || []),
+        targetTags: JSON.stringify(targetType === 'contacts' && targetContacts ? targetContacts : targetTags || []),
         targetGroups: JSON.stringify(targetGroups || []),
         status: 'scheduled',
         scheduledAt: scheduledAt ? new Date(scheduledAt) : new Date(Date.now() + 60000),
@@ -180,7 +181,7 @@ router.post('/campaigns/:id/send', async (req, res) => {
     const { id } = req.params;
     const { sendNow } = req.body;
 
-    const campaign = await prisma.campaign.findUnique({ where: { id } });
+    const campaign = await prisma.campaign.findUnique({ where: { id }, include: { template: true } });
     if (!campaign) return res.status(404).json({ error: 'Campanha não encontrada' });
 
     if (sendNow) {
@@ -292,7 +293,7 @@ router.post('/scheduled-messages/:id/cancel', async (req, res) => {
 // POST /api/automation/ai-response/enable
 router.post('/ai-response/enable', async (req, res) => {
   try {
-    const { enabled, welcomeMessage } = req.body;
+    const { enabled, welcomeMessage, qaRules } = req.body;
 
     if (typeof enabled !== 'boolean') {
       return res.status(400).json({ error: '"enabled" deve ser um booleano' });
@@ -302,10 +303,21 @@ router.post('/ai-response/enable', async (req, res) => {
     }
 
     // Upsert: only one config record (id = 'default')
-    const config = await (prisma as any).aIAutoResponse.upsert({
+    const normalizedQaRules = Array.isArray(qaRules)
+      ? qaRules
+          .map((rule: any) => ({
+            question: String(rule?.question || '').trim(),
+            answer: String(rule?.answer || '').trim(),
+          }))
+          .filter((rule) => rule.question && rule.answer)
+      : undefined;
+
+    const qaRulesData = normalizedQaRules ? JSON.stringify(normalizedQaRules) : undefined;
+
+    const config = await prisma.aIAutoResponse.upsert({
       where: { id: 'default' },
-      update: { enabled, welcomeMessage },
-      create: { id: 'default', enabled, welcomeMessage },
+      update: { enabled, welcomeMessage, ...(qaRulesData !== undefined ? { qaRules: qaRulesData } : {}) },
+      create: { id: 'default', enabled, welcomeMessage, qaRules: qaRulesData || '[]' },
     });
 
     res.json(config);
@@ -323,18 +335,18 @@ router.post('/ai-response/option/:number', async (req, res) => {
     if (![1, 2, 3, 4].includes(optionNumber)) {
       return res.status(400).json({ error: 'Número de opção inválido. Use 1, 2, 3 ou 4.' });
     }
-    if (!response || typeof response !== 'string') {
+    if (typeof response !== 'string') {
       return res.status(400).json({ error: '"response" é obrigatório' });
     }
 
     const fieldName = `option${optionNumber}` as 'option1' | 'option2' | 'option3' | 'option4';
 
-    const existing = await (prisma as any).aIAutoResponse.findUnique({ where: { id: 'default' } });
+    const existing = await prisma.aIAutoResponse.findUnique({ where: { id: 'default' } });
     if (!existing) {
       return res.status(404).json({ error: 'Configuração de AI não encontrada. Habilite primeiro via /enable.' });
     }
 
-    const updated = await (prisma as any).aIAutoResponse.update({
+    const updated = await prisma.aIAutoResponse.update({
       where: { id: 'default' },
       data: { [fieldName]: response },
     });
@@ -348,14 +360,23 @@ router.post('/ai-response/option/:number', async (req, res) => {
 // GET /api/automation/ai-response/config
 router.get('/ai-response/config', async (_req, res) => {
   try {
-    const config = await (prisma as any).aIAutoResponse.findUnique({ where: { id: 'default' } });
+    const config = await prisma.aIAutoResponse.findUnique({ where: { id: 'default' } });
 
     if (!config) {
       return res.json({
         enabled: false,
         welcomeMessage: '',
         options: { 1: '', 2: '', 3: '', 4: '' },
+        qaRules: [],
       });
+    }
+
+    let qaRules: any[] = [];
+    try {
+      qaRules = JSON.parse((config as any).qaRules || '[]');
+      if (!Array.isArray(qaRules)) qaRules = [];
+    } catch {
+      qaRules = [];
     }
 
     res.json({
@@ -367,6 +388,7 @@ router.get('/ai-response/config', async (_req, res) => {
         3: config.option3 || '',
         4: config.option4 || '',
       },
+      qaRules,
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -382,7 +404,7 @@ router.post('/ai-response/handle-message', async (req, res) => {
       return res.status(400).json({ error: '"contactId" e "message" são obrigatórios' });
     }
 
-    const config = await (prisma as any).aIAutoResponse.findUnique({ where: { id: 'default' } });
+    const config = await prisma.aIAutoResponse.findUnique({ where: { id: 'default' } });
     if (!config || !config.enabled) {
       return res.status(400).json({ error: 'AI Auto-Response não está habilitado' });
     }
@@ -409,7 +431,7 @@ router.post('/ai-response/handle-message', async (req, res) => {
       await whatsappService.sendText(contact.phone, optionResponse);
 
       // Persist conversation state
-      await (prisma as any).conversationState.upsert({
+      await prisma.conversationState.upsert({
         where: { contactId },
         update: { lastOption: optionNumber },
         create: { contactId, lastOption: optionNumber },
@@ -421,7 +443,7 @@ router.post('/ai-response/handle-message', async (req, res) => {
       await whatsappService.sendText(contact.phone, config.welcomeMessage);
 
       // Reset conversation state
-      await (prisma as any).conversationState.upsert({
+      await prisma.conversationState.upsert({
         where: { contactId },
         update: { lastOption: null },
         create: { contactId, lastOption: null },
@@ -440,17 +462,44 @@ async function createScheduledMessagesForCampaign(campaign: any) {
   const targets: { id: string; type: 'contact' | 'group' }[] = [];
 
   if (campaign.targetType === 'contacts') {
-    const tags = JSON.parse(campaign.targetTags || '[]');
-    const contacts = await prisma.contact.findMany({
-      where: tags.length > 0 ? { status: 'active' } : { status: 'active' }
-    });
-    contacts.forEach(c => targets.push({ id: c.id, type: 'contact' }));
+    try {
+      const contactIdsOrTags = JSON.parse(campaign.targetTags || '[]');
+      const selectedContacts = contactIdsOrTags.length > 0
+        ? await prisma.contact.findMany({ where: { id: { in: contactIdsOrTags }, status: 'active' } })
+        : [];
+
+      if (selectedContacts.length > 0) {
+        selectedContacts.forEach(c => targets.push({ id: c.id, type: 'contact' }));
+      } else {
+        const where: any = { status: 'active' };
+        if (contactIdsOrTags.length > 0) {
+          where.tags = { contains: contactIdsOrTags[0] };
+        }
+        const contacts = await prisma.contact.findMany({ where });
+        contacts.forEach(c => targets.push({ id: c.id, type: 'contact' }));
+      }
+    } catch (e) {
+      console.error('Erro ao filtrar contatos por tags:', e);
+      const contacts = await prisma.contact.findMany({ where: { status: 'active' } });
+      contacts.forEach(c => targets.push({ id: c.id, type: 'contact' }));
+    }
   } else if (campaign.targetType === 'groups') {
-    const groupIds = JSON.parse(campaign.targetGroups || '[]');
-    const groups = await prisma.whatsAppGroup.findMany({
-      where: { groupId: { in: groupIds } }
-    });
-    groups.forEach(g => targets.push({ id: g.id, type: 'group' }));
+    try {
+      const groupIds = JSON.parse(campaign.targetGroups || '[]');
+      const groups = await prisma.whatsAppGroup.findMany({
+        where: { groupId: { in: groupIds } }
+      });
+      groups.forEach(g => targets.push({ id: g.id, type: 'group' }));
+    } catch (e) {
+      console.error('Erro ao filtrar grupos:', e);
+    }
+  } else if (campaign.targetType === 'all') {
+    const contacts = await prisma.contact.findMany({ where: { status: 'active' } });
+    contacts.forEach(c => targets.push({ id: c.id, type: 'contact' }));
+  }
+
+  if (!campaign.template) {
+    throw new Error('Template da campanha não encontrado');
   }
 
   const template = campaign.template;

@@ -5,7 +5,7 @@ import { io } from 'socket.io-client';
 import { getWhatsAppStatus } from '../services/api';
 import {
   LayoutDashboard, Users, GraduationCap, Megaphone,
-  FileText, Calendar, Smartphone, Wifi, WifiOff, Menu, X, Zap, Send, MessageCircle, Bot
+  FileText, Calendar, Smartphone, Wifi, WifiOff, Menu, X, Zap, Send, MessageCircle
 } from 'lucide-react';
 
 export const socket = io({ path: '/socket.io' });
@@ -15,18 +15,16 @@ const navItems = [
   { to: '/contacts', icon: Users, label: 'Contatos', end: false },
   { to: '/students', icon: GraduationCap, label: 'Alunos', end: false },
   { to: '/messages', icon: MessageCircle, label: 'Mensagens', end: false },
-  { to: '/whatsapp', icon: MessageCircle, label: 'WhatsApp Web', end: true },
   { to: '/campaigns', icon: Megaphone, label: 'Campanhas', end: false },
   { to: '/templates', icon: FileText, label: 'Templates', end: false },
   { to: '/schedule', icon: Calendar, label: 'Agendamentos', end: false },
   { to: '/sequences', icon: Send, label: 'Sequências', end: false },
   { to: '/whatsapp/setup', icon: Smartphone, label: 'Config. WA', end: true },
   { to: '/automation', icon: Zap, label: 'Automação', end: false },
-  { to: '/auto-response', icon: Bot, label: 'IA Resposta', end: false },
 ];
 
 export default function Layout() {
-  const [waStatus, setWaStatus] = useState<'connected' | 'disconnected' | 'qr_ready'>('disconnected');
+  const [waStatus, setWaStatus] = useState<'connected' | 'disconnected' | 'qr_ready' | 'authenticated' | 'connecting'>('disconnected');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -43,6 +41,8 @@ export default function Layout() {
       setWaStatus('connected');
     } else if (statusData?.status === 'qr_ready') {
       setWaStatus('qr_ready');
+    } else if (statusData?.status === 'authenticated' || statusData?.status === 'connecting') {
+      setWaStatus(statusData.status);
     } else {
       setWaStatus('disconnected');
     }
@@ -53,7 +53,8 @@ export default function Layout() {
     socket.on('whatsapp:ready', () => setWaStatus('connected'));
     socket.on('whatsapp:disconnected', () => setWaStatus('disconnected'));
     socket.on('whatsapp:qr', () => setWaStatus('qr_ready'));
-    return () => { socket.off('whatsapp:ready'); socket.off('whatsapp:disconnected'); socket.off('whatsapp:qr'); };
+    socket.on('whatsapp:authenticated', () => setWaStatus('authenticated'));
+    return () => { socket.off('whatsapp:ready'); socket.off('whatsapp:disconnected'); socket.off('whatsapp:qr'); socket.off('whatsapp:authenticated'); };
   }, []);
 
   const sidebarContent = (onNavClick?: () => void) => (
@@ -86,12 +87,12 @@ export default function Layout() {
 
       {/* WhatsApp status badge */}
       <div className={`mx-3 my-2 flex items-center gap-2 px-3 py-2 rounded-lg text-xs ${waStatus === 'connected' ? 'bg-green-900/50 text-green-400' :
-          waStatus === 'qr_ready' ? 'bg-yellow-900/50 text-yellow-400' :
+          waStatus === 'qr_ready' || waStatus === 'authenticated' || waStatus === 'connecting' ? 'bg-yellow-900/50 text-yellow-400' :
             'bg-red-900/50 text-red-400'
         }`}>
         {waStatus === 'connected' ? <Wifi size={14} /> : <WifiOff size={14} />}
         {(sidebarOpen || onNavClick) && (
-          <span>{waStatus === 'connected' ? 'Conectado' : waStatus === 'qr_ready' ? 'Aguard. QR' : 'Desconectado'}</span>
+          <span>{waStatus === 'connected' ? 'Conectado' : waStatus === 'qr_ready' ? 'Aguard. QR' : waStatus === 'authenticated' ? 'Autenticando' : waStatus === 'connecting' ? 'Conectando' : 'Desconectado'}</span>
         )}
       </div>
 

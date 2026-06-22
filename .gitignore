@@ -21,14 +21,22 @@ frontend/.env
 # WhatsApp session
 .wwebjs_auth/
 .wwebjs_cache/
+backend/.wwebjs_auth*/
+backend/.wwebjs_cache/
 
 # Uploads (não versionar arquivos de usuários)
 uploads/media/*
 uploads/rg/*
 uploads/temp/*
+backend/uploads/media/*
+backend/uploads/rg/*
+backend/uploads/temp/*
 !uploads/media/.gitkeep
 !uploads/rg/.gitkeep
 !uploads/temp/.gitkeep
+!backend/uploads/media/.gitkeep
+!backend/uploads/rg/.gitkeep
+!backend/uploads/temp/.gitkeep
 
 # Build
 backend/dist/
@@ -36,6 +44,7 @@ frontend/dist/
 
 # Logs
 *.log
+*.err
 npm-debug.log*
 
 # OS

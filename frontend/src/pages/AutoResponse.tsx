@@ -154,13 +154,13 @@ export default function AutoResponse() {
   // ─── Test state ───────────────────────────────────────────────────────────
   const [testMsg, setTestMsg] = useState('');
   const [testChatId, setTestChatId] = useState('test-chat-001');
-  const [testResult, setTestResult] = useState<{ response: string; type: string } | null>(null);
+  const [testResult, setTestResult] = useState<{ response: string | null; type: string } | null>(null);
 
   const testMut = useMutation({
     mutationFn: testOpenAIAutoResponse,
     onSuccess: (data: any) => {
       setTestResult(data);
-      toast.success(`Resposta gerada via ${data.type === 'rule' ? 'regra' : 'OpenAI'}!`);
+      toast.success(data.type === 'rule' ? 'Resposta gerada via regra!' : 'Sem regra: atendimento manual.');
     },
     onError: (err: any) => toast.error(err.response?.data?.error || 'Erro no teste'),
   });
@@ -182,7 +182,7 @@ export default function AutoResponse() {
         <div>
           <h1 className="text-xl md:text-2xl font-bold">Resposta Automática com IA</h1>
           <p className="text-sm text-gray-500">
-            Responde automaticamente mensagens do WhatsApp usando OpenAI GPT-4
+            Responde automaticamente mensagens do WhatsApp usando OpenAI
           </p>
         </div>
       </div>
@@ -191,13 +191,19 @@ export default function AutoResponse() {
       {cfg && (
         <div
           className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium ${
-            cfg.enabled
+            cfg.enabled && cfg.apiKeyConfigured
               ? 'bg-green-100 text-green-700'
+              : cfg.enabled
+              ? 'bg-yellow-100 text-yellow-700'
               : 'bg-gray-100 text-gray-500'
           }`}
         >
           {cfg.enabled ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
-          {cfg.enabled ? 'Sistema ativo — respondendo mensagens' : 'Sistema inativo'}
+          {cfg.enabled && cfg.apiKeyConfigured
+            ? `Sistema ativo - ${cfg.model}`
+            : cfg.enabled
+            ? 'Sistema ativo - falta configurar OPENAI_API_KEY'
+            : 'Sistema inativo'}
         </div>
       )}
 
@@ -373,13 +379,15 @@ export default function AutoResponse() {
                         className={`text-xs font-bold px-2 py-0.5 rounded-full ${
                           testResult.type === 'rule'
                             ? 'bg-blue-100 text-blue-700'
-                            : 'bg-purple-100 text-purple-700'
+                            : 'bg-yellow-100 text-yellow-700'
                         }`}
                       >
                         {testResult.type === 'rule' ? '📋 Regra' : '🤖 OpenAI'}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-800 whitespace-pre-wrap">{testResult.response}</p>
+                    <p className="text-sm text-gray-800 whitespace-pre-wrap">
+                      {testResult.response || 'Nenhuma regra combinou. A conversa fica registrada para você responder manualmente.'}
+                    </p>
                   </div>
                 )}
               </div>
