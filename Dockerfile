@@ -96,4 +96,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3333/api/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1); }).on('error', () => process.exit(1));"
 
 # Executa a migração do banco e depois inicia o servidor; registra erros de inicialização no stderr
-CMD ["sh", "-c", "echo '[CMD] Executando prisma db push...' && npx prisma db push && echo '[CMD] Iniciando servidor...' && node dist/index.js"]
+CMD ["sh", "-c", "echo '[CMD] Executando prisma db push...' && npx prisma db push --skip-generate && echo '[CMD] Iniciando servidor...' && node dist/index.js"]
