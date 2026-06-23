@@ -41,6 +41,7 @@ model Contact {
   groupMembers       GroupMember[]
   campaignSends      CampaignSend[]
   conversationState  ConversationState?
+  studentCity        StudentCity?
 }
 
 // ─── Alunos (extensão de Contact para empresa de treinamentos) ──────────────
@@ -381,3 +382,60 @@ model ConversationState {
   updatedAt  DateTime @updatedAt
 }
 
+
+// ─── Cidades e Respostas Personalizadas ──────────────────────────────────────
+model City {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  state       String   // UF (SP, RJ, MG, etc)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  responses   CityResponse[]
+  students    Student[]
+
+  @@index([state])
+}
+
+model CityResponse {
+  id          String   @id @default(uuid())
+  cityId      String
+  city        City     @relation(fields: [cityId], references: [id], onDelete: Cascade)
+
+  // Tipo de resposta (welcome, info, schedule, etc)
+  type        String   // "welcome" | "info" | "schedule" | "custom"
+  
+  // Conteúdo da resposta
+  message     String   @db.Text
+  
+  // Ordem de exibição
+  order       Int      @default(0)
+  
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([cityId, type])
+  @@index([cityId])
+}
+
+model StudentCity {
+  id          String   @id @default(uuid())
+  contactId   String   @unique
+  contact     Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  
+  cityId      String?
+  city        City?    @relation(fields: [cityId], references: [id])
+  
+  // Armazena a resposta bruta do aluno
+  cityAnswer  String?
+  
+  // Status do fluxo
+  status      String   @default("pending") // "pending" | "identified" | "confirmed"
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([cityId])
+}

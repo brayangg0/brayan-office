@@ -526,3 +526,195 @@ async function createScheduledMessagesForCampaign(campaign: any) {
 }
 
 export default router;
+
+// ─── CITY IDENTIFICATION ────────────────────────────────────────────────────
+import { cityIdentificationService } from '../services/cityIdentification.service';
+
+// GET /api/automation/cities
+router.get('/cities', async (_req, res) => {
+  try {
+    const cities = await prisma.city.findMany({
+      where: { active: true },
+      include: {
+        responses: {
+          where: { active: true },
+          orderBy: { order: 'asc' },
+        },
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    res.json(cities);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/automation/cities
+router.post('/cities', async (req, res) => {
+  try {
+    const { name, state } = req.body;
+
+    if (!name || !state) {
+      return res.status(400).json({ error: 'Nome e estado são obrigatórios' });
+    }
+
+    const city = await prisma.city.create({
+      data: { name, state },
+    });
+
+    res.status(201).json(city);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/automation/cities/:cityId
+router.put('/cities/:cityId', async (req, res) => {
+  try {
+    const { cityId } = req.params;
+    const { name, state, active } = req.body;
+
+    const city = await prisma.city.update({
+      where: { id: cityId },
+      data: {
+        ...(name && { name }),
+        ...(state && { state }),
+        ...(active !== undefined && { active }),
+      },
+    });
+
+    res.json(city);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/automation/cities/:cityId/responses
+router.post('/cities/:cityId/responses', async (req, res) => {
+  try {
+    const { cityId } = req.params;
+    const { type, message, order } = req.body;
+
+    if (!type || !message) {
+      return res.status(400).json({ error: 'Tipo e mensagem são obrigatórios' });
+    }
+
+    const response = await prisma.cityResponse.upsert({
+      where: {
+        cityId_type: {
+          cityId,
+          type,
+        },
+      },
+      update: {
+        message,
+        order: order || 0,
+      },
+      create: {
+        cityId,
+        type,
+        message,
+        order: order || 0,
+      },
+    });
+
+    res.status(201).json(response);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/automation/cities/:cityId/responses/:responseId
+router.put('/cities/:cityId/responses/:responseId', async (req, res) => {
+  try {
+    const { responseId } = req.params;
+    const { message, order, active } = req.body;
+
+    const response = await prisma.cityResponse.update({
+      where: { id: responseId },
+      data: {
+        ...(message && { message }),
+        ...(order !== undefined && { order }),
+        ...(active !== undefined && { active }),
+      },
+    });
+
+    res.json(response);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/automation/cities/identify
+router.post('/cities/identify', async (req, res) => {
+  try {
+    const { userAnswer, contactId } = req.body;
+
+    if (!userAnswer) {
+      return res.status(400).json({ error: 'Resposta do usuário é obrigatória' });
+    }
+
+    const identified = await cityIdentificationService.identifyCity(userAnswer);
+
+    if (!identified) {
+      return res.json({ success: false, message: 'Não foi possível identificar a cidade' });
+    }
+
+    if (contactId) {
+      await cityIdentificationService.saveCityForContact(contactId, identified.cityId, userAnswer);
+    }
+
+    res.json({
+      success: true,
+      cityId: identified.cityId,
+      cityName: identified.cityName,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/automation/cities/contact/:contactId
+router.get('/cities/contact/:contactId', async (req, res) => {
+  try {
+    const { contactId } = req.params;
+
+    const city = await cityIdentificationService.getContactCity(contactId);
+
+    if (!city) {
+      return res.json({ city: null });
+    }
+
+    res.json({ city });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/automation/cities/:cityId/response/:type
+router.get('/cities/:cityId/response/:type', async (req, res) => {
+  try {
+    const { cityId, type } = req.params;
+
+    const message = await cityIdentificationService.getCityResponse(cityId, type);
+
+    if (!message) {
+      return res.json({ message: null });
+    }
+
+    res.json({ message });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/automation/cities/seed
+router.post('/cities/seed', async (_req, res) => {
+  try {
+    await cityIdentificationService.seedCities();
+    res.json({ message: 'Cidades padrão criadas com sucesso' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
