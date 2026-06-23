@@ -15,6 +15,30 @@ function detectChromiumPath(): string | undefined {
     }
     console.warn(`[WhatsApp] ⚠️  CHROMIUM_PATH=${envPath} não existe. Tentando auto-detectar...`);
   }
+
+  if (process.platform === 'win32') {
+    const windowsCandidates = [
+      process.env.LOCALAPPDATA
+        ? path.join(process.env.LOCALAPPDATA, 'Google', 'Chrome', 'Application', 'chrome.exe')
+        : '',
+      process.env.PROGRAMFILES
+        ? path.join(process.env.PROGRAMFILES, 'Google', 'Chrome', 'Application', 'chrome.exe')
+        : '',
+      process.env['PROGRAMFILES(X86)']
+        ? path.join(process.env['PROGRAMFILES(X86)'], 'Google', 'Chrome', 'Application', 'chrome.exe')
+        : '',
+      process.env.PROGRAMFILES
+        ? path.join(process.env.PROGRAMFILES, 'Microsoft', 'Edge', 'Application', 'msedge.exe')
+        : '',
+    ];
+
+    const found = windowsCandidates.find((candidate) => candidate && fs.existsSync(candidate));
+    if (found) {
+      console.log(`[WhatsApp] Navegador detectado no Windows: ${found}`);
+      return found;
+    }
+  }
+
   try {
     const found = execSync(
       'which chromium 2>/dev/null || which chromium-browser 2>/dev/null || which google-chrome-stable 2>/dev/null || which google-chrome 2>/dev/null',
@@ -827,15 +851,16 @@ class WhatsAppService {
 
   async logout() {
     console.log('[WhatsApp] Desconectando e limpando sessão...');
-    if (this.client) {
+    const client = this.client;
+    if (client) {
       try {
-        await this.client.logout();
+        await client.logout();
       } catch(err) {
         console.error('[WhatsApp] Erro remoto ao desconectar:', err);
       }
 
       try {
-        await this.client.destroy();
+        await client.destroy();
       } catch(err) {
         console.error('[WhatsApp] Erro ao destruir cliente:', err);
       }
