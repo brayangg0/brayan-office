@@ -28,6 +28,7 @@ import scheduleRoutes from './routes/schedules';
 import automationRoutes from './routes/automation';
 import sequenceRoutes from './routes/sequences';
 import openaiAutoResponseRoutes from './routes/openaiAutoResponse';
+import conversationMemoryRoutes from './routes/conversationMemory.routes';
 import { setSocketIO } from './services/whatsapp.service';
 
 const app = express();
@@ -64,6 +65,7 @@ app.use('/api/templates',   templateRoutes);
 app.use('/api/schedules',   scheduleRoutes);
 app.use('/api/automation',  automationRoutes);
 app.use('/api/sequences',   sequenceRoutes);
+app.use('/api/conversation', conversationMemoryRoutes);
 app.use('/api/openai-autoresponse', openaiAutoResponseRoutes);
 
 // Health check
