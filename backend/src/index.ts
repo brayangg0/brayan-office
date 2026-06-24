@@ -10,7 +10,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-import { prisma } from './services/database';
+import { ensureDatabaseCompatibility, prisma } from './services/database';
 import { whatsappService } from './services/whatsapp.service';
 import { schedulerService } from './services/scheduler.service';
 import { sequenceService } from './services/sequence.service';
@@ -103,6 +103,8 @@ async function bootstrap() {
   try {
     await prisma.$connect();
     console.log('[DB] Conectado ao banco de dados');
+    await ensureDatabaseCompatibility();
+    console.log('[DB] Compatibilidade do schema verificada');
 
     // Passa o Socket.IO para o serviço WhatsApp
     setSocketIO(io);
