@@ -425,7 +425,7 @@ export default function Automation() {
                   📩 Mensagem de Boas-Vindas (Menu Principal)
                 </label>
                 <textarea
-                  className="input font-mono text-sm"
+                  className="input text-sm font-sans leading-relaxed resize-y min-h-48"
                   rows={8}
                   value={aiWelcome}
                   onChange={(e) => setAiWelcome(e.target.value)}
