@@ -1,8 +1,9 @@
 import { Outlet, NavLink } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { io } from 'socket.io-client';
-import { getWhatsAppStatus } from '../services/api';
+import { getAttentionMessages, getWhatsAppStatus } from '../services/api';
+import toast from 'react-hot-toast';
 import {
   LayoutDashboard, Users, GraduationCap, Megaphone,
   FileText, Calendar, Smartphone, Wifi, WifiOff, Menu, X, Zap, Send, MessageCircle
@@ -24,6 +25,7 @@ const navItems = [
 ];
 
 export default function Layout() {
+  const qc = useQueryClient();
   const [waStatus, setWaStatus] = useState<'connected' | 'disconnected' | 'qr_ready' | 'authenticated' | 'connecting'>('disconnected');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -34,6 +36,12 @@ export default function Layout() {
     queryFn: getWhatsAppStatus,
     refetchInterval: 5000,
   });
+  const { data: attentionData } = useQuery({
+    queryKey: ['attention-messages'],
+    queryFn: getAttentionMessages,
+    refetchInterval: 15000,
+  });
+  const attentionTotal = attentionData?.total || 0;
 
   // Sincroniza estado com servidor
   useEffect(() => {
@@ -56,6 +64,33 @@ export default function Layout() {
     socket.on('whatsapp:authenticated', () => setWaStatus('authenticated'));
     return () => { socket.off('whatsapp:ready'); socket.off('whatsapp:disconnected'); socket.off('whatsapp:qr'); socket.off('whatsapp:authenticated'); };
   }, []);
+
+  useEffect(() => {
+    const requiredHandler = (payload: any) => {
+      qc.invalidateQueries({ queryKey: ['attention-messages'] });
+      const name = payload?.contact?.name || 'Novo contato';
+      const body = payload?.message?.body || 'Mensagem sem resposta automática';
+      toast.error(
+        `Atendimento necessário\n${name}: “${body}”`,
+        { duration: 10000 }
+      );
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('Atendimento necessário', {
+          body: `${name}: “${body}”`,
+          tag: `attention-${payload?.contact?.id || 'new'}`,
+        });
+      }
+    };
+    const resolvedHandler = () => {
+      qc.invalidateQueries({ queryKey: ['attention-messages'] });
+    };
+    socket.on('attention:required', requiredHandler);
+    socket.on('attention:resolved', resolvedHandler);
+    return () => {
+      socket.off('attention:required', requiredHandler);
+      socket.off('attention:resolved', resolvedHandler);
+    };
+  }, [qc]);
 
   const sidebarContent = (onNavClick?: () => void) => (
     <>
@@ -106,6 +141,11 @@ export default function Layout() {
             }>
             <Icon size={18} className="shrink-0" />
             {(sidebarOpen || onNavClick) && <span>{label}</span>}
+            {to === '/messages' && attentionTotal > 0 && (
+              <span className={`${sidebarOpen || onNavClick ? 'ml-auto' : 'absolute ml-5 -mt-5'} min-w-5 h-5 px-1 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center`}>
+                {attentionTotal > 99 ? '99+' : attentionTotal}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>

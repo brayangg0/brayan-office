@@ -3,14 +3,14 @@ import { useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getContacts, getGroups, getContactMessages, getGroupMessages,
-  sendMessageToContact, sendMessageToGroup,
+  sendMessageToContact, sendMessageToGroup, getAttentionMessages, resolveContactAttention,
 } from '../services/api';
 import { socket } from '../components/Layout';
 import toast from 'react-hot-toast';
 import {
   Search, Send, Users, User, Paperclip, X, MessageCircle,
   Image, FileAudio, FileVideo, FileText, CheckCheck, Check,
-  Clock, ChevronLeft,
+  Clock, ChevronLeft, AlertTriangle, Bell, CheckCircle,
 } from 'lucide-react';
 
 type ConversationType = 'contact' | 'group';
@@ -31,6 +31,16 @@ interface Message {
   mediaPath?: string;
   status: string;
   createdAt: string;
+}
+
+function attentionMessageText(message: any): string {
+  if (!message) return 'Mensagem não identificada';
+  if (message.body && !['[Mídia]', '[MEDIA]'].includes(message.body)) return message.body;
+  if (message.type === 'audio' || message.type === 'ptt') return 'Mensagem de áudio';
+  if (message.type === 'image') return 'Imagem recebida';
+  if (message.type === 'video') return 'Vídeo recebido';
+  if (message.type === 'document') return 'Documento recebido';
+  return message.body || 'Mensagem recebida';
 }
 
 function StatusIcon({ status }: { status: string }) {
@@ -79,6 +89,7 @@ export default function Messages() {
   const [caption, setCaption] = useState('');
   const [sending, setSending] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
+  const [onlyPending, setOnlyPending] = useState(false);
 
   // Queries
   const { data: contactsData } = useQuery({
@@ -89,8 +100,32 @@ export default function Messages() {
     queryKey: ['groups'],
     queryFn: getGroups,
   });
+  const { data: attentionData } = useQuery({
+    queryKey: ['attention-messages'],
+    queryFn: getAttentionMessages,
+    refetchInterval: 15000,
+  });
 
-  const contacts: any[] = contactsData?.contacts || [];
+  const pendingByContact = new Map<string, any>(
+    (attentionData?.conversations || []).map((item: any) => [item.contactId, item])
+  );
+  const queriedContacts: any[] = contactsData?.contacts || [];
+  const pendingContacts: any[] = (attentionData?.conversations || [])
+    .map((item: any) => item.contact)
+    .filter((contact: any) =>
+      !search ||
+      contact.name.toLowerCase().includes(search.toLowerCase()) ||
+      contact.phone.includes(search)
+    );
+  const allContacts: any[] = [
+    ...pendingContacts,
+    ...queriedContacts.filter((contact: any) =>
+      !pendingContacts.some((pending: any) => pending.id === contact.id)
+    ),
+  ];
+  const contacts = onlyPending
+    ? allContacts.filter((contact: any) => pendingByContact.has(contact.id))
+    : allContacts;
   const groups: any[] = groupsData || [];
 
   // Filtra grupos pelo search
@@ -164,8 +199,31 @@ export default function Messages() {
       qc.invalidateQueries({ queryKey: ['contacts'] });
     };
     socket.on('message:received', handler);
-    return () => { socket.off('message:received', handler); };
+    const attentionHandler = () => qc.invalidateQueries({ queryKey: ['attention-messages'] });
+    socket.on('attention:required', attentionHandler);
+    socket.on('attention:resolved', attentionHandler);
+    return () => {
+      socket.off('message:received', handler);
+      socket.off('attention:required', attentionHandler);
+      socket.off('attention:resolved', attentionHandler);
+    };
   }, [selected, qc]);
+
+  const enableBrowserAlerts = async () => {
+    if (!('Notification' in window)) {
+      toast.error('Este navegador não oferece notificações.');
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') toast.success('Notificações do navegador ativadas!');
+    else toast.error('Permissão de notificação não concedida.');
+  };
+
+  const resolvePending = async (contactId: string) => {
+    await resolveContactAttention(contactId);
+    await qc.invalidateQueries({ queryKey: ['attention-messages'] });
+    toast.success('Atendimento marcado como resolvido.');
+  };
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -256,6 +314,26 @@ export default function Messages() {
           <h1 className="text-lg font-bold mb-3 flex items-center gap-2">
             <MessageCircle size={20} className="text-whatsapp" /> Mensagens
           </h1>
+          <div className="flex gap-2 mb-3">
+            <button
+              type="button"
+              onClick={() => setOnlyPending(!onlyPending)}
+              className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium ${
+                onlyPending ? 'bg-red-600 text-white' : 'bg-red-50 text-red-700'
+              }`}
+            >
+              <AlertTriangle size={14} />
+              Pendentes ({attentionData?.total || 0})
+            </button>
+            <button
+              type="button"
+              onClick={enableBrowserAlerts}
+              className="rounded-lg px-3 py-2 text-xs bg-gray-100 text-gray-600"
+              title="Ativar notificações do navegador"
+            >
+              <Bell size={15} />
+            </button>
+          </div>
           {/* Search */}
           <div className="flex items-center gap-2 bg-gray-100 rounded-lg px-3 py-2">
             <Search size={14} className="text-gray-400 shrink-0" />
@@ -289,21 +367,33 @@ export default function Messages() {
             contacts.length === 0 ? (
               <p className="text-center text-gray-400 text-sm py-10">Nenhum contato encontrado</p>
             ) : (
-              contacts.map((c: any) => (
+              contacts.map((c: any) => {
+                const pending = pendingByContact.get(c.id);
+                return (
                 <button
                   key={c.id}
                   onClick={() => selectConversation({ type: 'contact', id: c.id, name: c.name, phone: c.phone })}
-                  className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left border-b border-gray-50 ${selected && selected.id === c.id && selected.type === 'contact' ? 'bg-green-50 border-l-2 border-l-whatsapp' : ''}`}
+                  className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left border-b ${pending ? 'bg-red-50 border-red-100' : 'border-gray-50'} ${selected && selected.id === c.id && selected.type === 'contact' ? 'border-l-2 border-l-whatsapp' : ''}`}
                 >
                   <div className="w-10 h-10 rounded-full bg-whatsapp/10 flex items-center justify-center text-whatsapp font-bold text-sm shrink-0">
                     {c.name.charAt(0).toUpperCase()}
                   </div>
-                  <div className="min-w-0">
-                    <p className="font-medium text-sm truncate">{c.name}</p>
-                    <p className="text-xs text-gray-400 truncate">{c.phone}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-sm truncate">
+                      {c.name}
+                      {pending && <span className="ml-1 text-[10px] font-semibold text-red-600">PRECISA DE ATENDIMENTO</span>}
+                    </p>
+                    <p className={`text-xs ${pending ? 'text-red-700 line-clamp-2 whitespace-normal' : 'text-gray-400 truncate'}`}>
+                      {pending ? `“${attentionMessageText(pending.latestMessage)}”` : c.phone}
+                    </p>
                   </div>
+                  {pending && (
+                    <span className="min-w-5 h-5 px-1 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center">
+                      {pending.count}
+                    </span>
+                  )}
                 </button>
-              ))
+              )})
             )
           ) : (
             filteredGroups.length === 0 ? (
@@ -409,6 +499,25 @@ export default function Messages() {
             </div>
 
             {/* Input Area */}
+            {selected.type === 'contact' && pendingByContact.has(selected.id) && (
+              <div className="bg-red-50 border-t border-red-100 px-3 py-3 flex items-start justify-between gap-3">
+                <div className="text-xs text-red-800 min-w-0">
+                  <span className="font-semibold flex items-center gap-1.5 mb-1">
+                    <AlertTriangle size={14} /> A automação não encontrou uma resposta
+                  </span>
+                  <p className="break-words">
+                    Pergunta recebida: “{attentionMessageText(pendingByContact.get(selected.id)?.latestMessage)}”
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => resolvePending(selected.id)}
+                  className="text-xs text-green-700 font-medium flex items-center gap-1"
+                >
+                  <CheckCircle size={14} /> Marcar resolvido
+                </button>
+              </div>
+            )}
             <div className="bg-white border-t border-gray-200 p-3">
               {/* File preview */}
               {file && (

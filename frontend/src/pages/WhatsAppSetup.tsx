@@ -198,7 +198,10 @@ export default function WhatsAppSetup() {
     onSuccess: (d) => {
       qc.invalidateQueries({ queryKey: ['groups'] });
       toast.success(d.message);
-    }
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.error || 'Erro ao sincronizar os grupos da conta atual');
+    },
   });
 
   const toggleMut = useMutation({

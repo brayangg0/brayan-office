@@ -61,6 +61,8 @@ export const getContact = (id: string) => api.get(`/contacts/${id}`).then((r) =>
 export const createContact = (data: any) => api.post('/contacts', data).then((r) => r.data);
 export const updateContact = (id: string, data: any) => api.put(`/contacts/${id}`, data).then((r) => r.data);
 export const deleteContact = (id: string) => api.delete(`/contacts/${id}`);
+export const setContactAutomationBlocked = (id: string, blocked: boolean) =>
+  api.post(`/contacts/${id}/automation-block`, { blocked }).then((r) => r.data);
 export const importContacts = (contacts: any[]) => api.post('/contacts/import', { contacts }).then((r) => r.data);
 export const importContactsCsv = (file: File) => {
   const fd = new FormData();
@@ -122,6 +124,12 @@ export const getAutoResponseTemplates = () => api.get('/automation/autoresponse/
 export const createAutoResponseTemplate = (data: any) => api.post('/automation/autoresponse/template', data).then((r) => r.data);
 export const updateAutoResponseTemplate = (id: string, data: any) => api.put(`/automation/autoresponse/template/${id}`, data).then((r) => r.data);
 export const deleteAutoResponseTemplate = (id: string) => api.delete(`/automation/autoresponse/template/${id}`).then((r) => r.data);
+export const getAutomationBlockedPhones = () =>
+  api.get('/automation/blocked-phones').then((r) => r.data);
+export const addAutomationBlockedPhone = (data: { phone: string; name?: string }) =>
+  api.post('/automation/blocked-phones', data).then((r) => r.data);
+export const deleteAutomationBlockedPhone = (id: string) =>
+  api.delete(`/automation/blocked-phones/${id}`);
 
 // Automação - Campanhas Agendadas
 export const getAutomationCampaigns = (params?: any) => api.get('/automation/campaigns', { params }).then((r) => r.data);
@@ -140,6 +148,8 @@ export const enableAIAutoResponse = (data: {
   enabled: boolean;
   welcomeMessage: string;
   qaRules?: { question: string; answer: string }[];
+  closingEnabled?: boolean;
+  closingMessage?: string;
 }) =>
   api.post('/automation/ai-response/enable', data).then((r) => r.data);
 export const setAIAutoResponseOption = (number: 1 | 2 | 3 | 4, response: string) =>
@@ -211,3 +221,6 @@ export const getContactMessages = (contactId: string, params?: any) => api.get(`
 export const getGroupMessages = (groupId: string, params?: any) => api.get(`/messages/group/${groupId}`, { params }).then((r) => r.data);
 export const sendMessageToContact = (fd: FormData) => api.post('/messages/send-to-contact', fd).then((r) => r.data);
 export const sendMessageToGroup = (fd: FormData) => api.post('/messages/send-to-group', fd).then((r) => r.data);
+export const getAttentionMessages = () => api.get('/messages/attention').then((r) => r.data);
+export const resolveContactAttention = (contactId: string) =>
+  api.post(`/messages/attention/${contactId}/resolve`).then((r) => r.data);

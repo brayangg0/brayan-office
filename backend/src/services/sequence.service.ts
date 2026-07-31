@@ -5,11 +5,74 @@ import fs from 'fs';
 
 class SequenceService {
   private activeSchedules: Map<string, NodeJS.Timeout> = new Map();
+  // Mídias levam alguns segundos para serem preparadas pelo WhatsApp Web.
+  // Iniciamos um pouco antes para a primeira mensagem chegar no horário escolhido.
+  private readonly sendLeadMs = Number(process.env.SEQUENCE_SEND_LEAD_MS || 4000);
+
+  private parseStringArray(value: string): string[] {
+    try {
+      const parsed = JSON.parse(value || '[]');
+      return Array.isArray(parsed) ? parsed.map(String) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private getNextRepeatedOccurrence(
+    sequence: any,
+    after = new Date()
+  ): { date: Date; messageIds: string[] } | null {
+    const dayNames = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
+    const startDate = new Date(sequence.scheduledAt);
+    const candidates: Array<{ date: Date; messageId: string }> = [];
+
+    for (const message of sequence.messages) {
+      const times = this.parseStringArray(message.repeatTimes)
+        .filter((time) => /^([01]?\d|2[0-3]):[0-5]\d$/.test(time));
+      const days = this.parseStringArray(message.repeatDays);
+
+      for (let offset = 0; offset <= 370; offset++) {
+        const date = new Date(startDate);
+        date.setHours(0, 0, 0, 0);
+        date.setDate(date.getDate() + offset);
+
+        // Sem dias selecionados, os horários são executados somente na data escolhida.
+        if (days.length === 0 && offset > 0) break;
+        if (days.length > 0 && !days.includes(dayNames[date.getDay()])) continue;
+
+        for (const time of times) {
+          const [hour, minute] = time.split(':').map(Number);
+          const occurrence = new Date(date);
+          occurrence.setHours(hour, minute, 0, 0);
+          const wasAlreadySent =
+            message.lastSentAt && occurrence.getTime() <= new Date(message.lastSentAt).getTime();
+          if (!wasAlreadySent && occurrence.getTime() > after.getTime() + 500) {
+            candidates.push({ date: occurrence, messageId: message.id });
+          }
+        }
+
+        // Para recorrência semanal basta procurar até a próxima semana.
+        if (days.length > 0 && offset >= 7 && candidates.some((item) => item.messageId === message.id)) {
+          break;
+        }
+      }
+    }
+
+    if (candidates.length === 0) return null;
+    candidates.sort((left, right) => left.date.getTime() - right.date.getTime());
+    const nextTime = candidates[0].date.getTime();
+    return {
+      date: candidates[0].date,
+      messageIds: candidates
+        .filter((item) => item.date.getTime() === nextTime)
+        .map((item) => item.messageId),
+    };
+  }
 
   /**
    * Agenda uma sequência de mensagens para envio
    */
-  async scheduleSequence(sequenceId: string): Promise<void> {
+  async scheduleSequence(sequenceId: string, afterOccurrence?: Date): Promise<void> {
     const sequence = await prisma.messageSequence.findUnique({
       where: { id: sequenceId },
       include: { messages: { orderBy: { order: 'asc' } } },
@@ -23,7 +86,47 @@ class SequenceService {
       clearTimeout(this.activeSchedules.get(sequenceId)!);
     }
 
-    const delayMs = sequence.scheduledAt.getTime() - Date.now();
+    const hasMultipleTimes = sequence.messages.some(
+      (message) => this.parseStringArray(message.repeatTimes).length > 0
+    );
+    if (hasMultipleTimes) {
+      const next = this.getNextRepeatedOccurrence(sequence, afterOccurrence || new Date());
+      if (!next) {
+        await prisma.messageSequence.update({
+          where: { id: sequenceId },
+          data: { status: 'completed', completedAt: new Date() },
+        });
+        this.activeSchedules.delete(sequenceId);
+        return;
+      }
+
+      await prisma.messageSequence.update({
+        where: { id: sequenceId },
+        data: { status: 'pending', completedAt: null },
+      });
+
+      const delayMs = Math.max(0, next.date.getTime() - Date.now() - this.sendLeadMs);
+      console.log(
+        `[Sequence] Sequência ${sequenceId} agendada para ${next.date.toLocaleString('pt-BR')} ` +
+        `(${next.messageIds.length} arquivo(s)/mensagem(ns))`
+      );
+      const timeout = setTimeout(async () => {
+        try {
+          await this.sendScheduledMessages(sequenceId, next.messageIds, next.date);
+        } catch (err: any) {
+          console.error(`[Sequence] Erro no horário agendado de ${sequenceId}:`, err.message);
+        } finally {
+          this.activeSchedules.delete(sequenceId);
+          // Procura somente horários posteriores ao que acabou de ser executado.
+          // Isso evita repetir o mesmo disparo quando a preparação começa antes.
+          await this.scheduleSequence(sequenceId, next.date);
+        }
+      }, delayMs);
+      this.activeSchedules.set(sequenceId, timeout);
+      return;
+    }
+
+    const delayMs = sequence.scheduledAt.getTime() - Date.now() - this.sendLeadMs;
     if (delayMs <= 0) {
       // Executa em background para não bloquear a HTTP request de criação
       console.log(`[Sequence] ⚡ Sequência ${sequenceId} em execução imediata (background)`);
@@ -42,6 +145,62 @@ class SequenceService {
 
       this.activeSchedules.set(sequenceId, timeout);
     }
+  }
+
+  private async sendScheduledMessages(
+    sequenceId: string,
+    messageIds: string[],
+    scheduledFor: Date
+  ): Promise<void> {
+    const sequence = await prisma.messageSequence.findUnique({
+      where: { id: sequenceId },
+      include: { messages: { orderBy: { order: 'asc' } } },
+    });
+    if (!sequence || sequence.status === 'cancelled') return;
+
+    const { isReady } = whatsappService.getStatus();
+    if (!isReady) throw new Error('WhatsApp não está conectado');
+
+    const messages = sequence.messages.filter((message) => messageIds.includes(message.id));
+    const targets = await this.getTargets(sequence);
+    if (targets.length === 0) throw new Error('Nenhum destinatário encontrado');
+
+    let sent = 0;
+    let failed = 0;
+    for (const target of targets) {
+      try {
+        for (let index = 0; index < messages.length; index++) {
+          const message = messages[index];
+          if (index > 0 && message.delayBefore > 0) {
+            await new Promise((resolve) => setTimeout(resolve, message.delayBefore));
+          }
+          await this.sendMessage(target, {
+            type: message.type,
+            body: message.body || undefined,
+            mediaPath: message.mediaPath || undefined,
+            caption: message.caption || undefined,
+          });
+        }
+        sent++;
+      } catch (err: any) {
+        failed++;
+        console.error(`[Sequence] Falha no envio agendado para ${target.id}:`, err.message);
+      }
+    }
+
+    await prisma.messageSequence.update({
+      where: { id: sequenceId },
+      data: {
+        totalSent: { increment: sent },
+        totalFailed: { increment: failed },
+        startedAt: sequence.startedAt || new Date(),
+      },
+    });
+    await prisma.sequenceMessage.updateMany({
+      where: { id: { in: messageIds } },
+      data: { lastSentAt: scheduledFor },
+    });
+    console.log(`[Sequence] Horário concluído: ${sent} destinatário(s), ${failed} falha(s).`);
   }
 
   /**
@@ -329,7 +488,7 @@ class SequenceService {
    */
   async reloadSchedules(): Promise<void> {
     const sequences = await prisma.messageSequence.findMany({
-      where: { status: 'pending', scheduledAt: { gt: new Date() } },
+      where: { status: 'pending' },
     });
 
     for (const seq of sequences) {

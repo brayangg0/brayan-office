@@ -7,6 +7,32 @@ import fs from 'fs';
 
 const router = Router();
 
+router.get('/blocked-phones', async (_req, res) => {
+  const blockedPhones = await prisma.automationBlockedPhone.findMany({
+    orderBy: { createdAt: 'desc' },
+  });
+  res.json(blockedPhones);
+});
+
+router.post('/blocked-phones', async (req, res) => {
+  const phone = String(req.body?.phone || '').replace(/\D/g, '');
+  const name = String(req.body?.name || '').trim() || null;
+  if (phone.length < 10 || phone.length > 15) {
+    return res.status(400).json({ error: 'Informe o número com DDD e, se necessário, o código do país.' });
+  }
+  const blockedPhone = await prisma.automationBlockedPhone.upsert({
+    where: { phone },
+    update: { name },
+    create: { phone, name },
+  });
+  res.status(201).json(blockedPhone);
+});
+
+router.delete('/blocked-phones/:id', async (req, res) => {
+  await prisma.automationBlockedPhone.delete({ where: { id: req.params.id } });
+  res.status(204).send();
+});
+
 // ─── AUTORRESPONSE ─────────────────────────────────────────────────────────
 
 // GET /api/automation/autoresponse/status
@@ -293,7 +319,7 @@ router.post('/scheduled-messages/:id/cancel', async (req, res) => {
 // POST /api/automation/ai-response/enable
 router.post('/ai-response/enable', async (req, res) => {
   try {
-    const { enabled, welcomeMessage, qaRules } = req.body;
+    const { enabled, welcomeMessage, qaRules, closingEnabled, closingMessage } = req.body;
 
     if (typeof enabled !== 'boolean') {
       return res.status(400).json({ error: '"enabled" deve ser um booleano' });
@@ -313,11 +339,28 @@ router.post('/ai-response/enable', async (req, res) => {
       : undefined;
 
     const qaRulesData = normalizedQaRules ? JSON.stringify(normalizedQaRules) : undefined;
+    const closingData = {
+      ...(typeof closingEnabled === 'boolean' ? { closingEnabled } : {}),
+      ...(typeof closingMessage === 'string' && closingMessage.trim()
+        ? { closingMessage: closingMessage.trim() }
+        : {}),
+    };
 
     const config = await prisma.aIAutoResponse.upsert({
       where: { id: 'default' },
-      update: { enabled, welcomeMessage, ...(qaRulesData !== undefined ? { qaRules: qaRulesData } : {}) },
-      create: { id: 'default', enabled, welcomeMessage, qaRules: qaRulesData || '[]' },
+      update: {
+        enabled,
+        welcomeMessage,
+        ...(qaRulesData !== undefined ? { qaRules: qaRulesData } : {}),
+        ...closingData,
+      },
+      create: {
+        id: 'default',
+        enabled,
+        welcomeMessage,
+        qaRules: qaRulesData || '[]',
+        ...closingData,
+      },
     });
 
     res.json(config);
@@ -368,6 +411,8 @@ router.get('/ai-response/config', async (_req, res) => {
         welcomeMessage: '',
         options: { 1: '', 2: '', 3: '', 4: '' },
         qaRules: [],
+        closingEnabled: true,
+        closingMessage: '😊 Ficamos felizes em ajudar!\nSe precisar de alguma coisa novamente, é só mandar uma mensagem.\nAté mais!',
       });
     }
 
@@ -389,6 +434,8 @@ router.get('/ai-response/config', async (_req, res) => {
         4: config.option4 || '',
       },
       qaRules,
+      closingEnabled: config.closingEnabled,
+      closingMessage: config.closingMessage,
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

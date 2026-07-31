@@ -50,6 +50,8 @@ export const Sequences: React.FC = () => {
   ]);
   const [messageFiles, setMessageFiles] = useState<Map<number, File>>(new Map());
   const [timeInputs, setTimeInputs] = useState<Map<number, string>>(new Map());
+  const [newScheduleTime, setNewScheduleTime] = useState('');
+  const [selectedScheduleTimes, setSelectedScheduleTimes] = useState<string[]>([]);
 
   // Queries
   const { data: sequences = [] } = useQuery({
@@ -93,7 +95,6 @@ export const Sequences: React.FC = () => {
       if (messages.length === 0) {
         throw new Error('Adicione pelo menos uma mensagem');
       }
-
       // Validate character limits before sending
       for (let i = 0; i < messages.length; i++) {
         const msg = messages[i];
@@ -107,10 +108,12 @@ export const Sequences: React.FC = () => {
       // Processar e validar horários
       const processedMessages = messages.map((msg) => ({
         ...msg,
-        repeatTimes: (timeInputs.get(msg.order) || '')
-          .split(',')
-          .map(t => t.trim())
-          .filter(t => t.length > 0 && t.match(/^\d{1,2}:\d{2}$/)),
+        repeatTimes: selectedScheduleTimes.length > 0
+          ? selectedScheduleTimes
+          : (timeInputs.get(msg.order) || '')
+              .split(',')
+              .map(t => t.trim())
+              .filter(t => t.length > 0 && t.match(/^\d{1,2}:\d{2}$/)),
       }));
 
       const datetime = `${formData.scheduledAt}T${formData.scheduledTime}`;
@@ -227,6 +230,8 @@ export const Sequences: React.FC = () => {
     setMessages([{ order: 0, type: 'text', body: '', delayBefore: 2000, messageDelay: 3000, repeatDays: [], repeatTimes: [] }]);
     setMessageFiles(new Map());
     setTimeInputs(new Map());
+    setNewScheduleTime('');
+    setSelectedScheduleTimes([]);
     setShowForm(false);
   };
 
@@ -351,6 +356,71 @@ export const Sequences: React.FC = () => {
             <h3 className="text-lg md:text-xl font-bold mb-3 md:mb-4 flex items-center gap-2">
               📝 Mensagens ({messages.length})
             </h3>
+
+            <div className="mb-4 p-4 bg-purple-50 rounded-lg border border-purple-200">
+              <label className="block text-sm font-semibold text-purple-900 mb-2">
+                Horários da sequência
+              </label>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="time"
+                  value={newScheduleTime}
+                  onChange={(event) => setNewScheduleTime(event.target.value)}
+                  className="flex-1 p-2 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!newScheduleTime) return;
+                    setSelectedScheduleTimes((current) =>
+                      [...new Set([...current, newScheduleTime])].sort()
+                    );
+                    setNewScheduleTime('');
+                  }}
+                  disabled={!newScheduleTime}
+                  className="bg-white border border-purple-300 text-purple-700 px-4 py-2 rounded hover:bg-purple-100 text-sm disabled:opacity-50"
+                >
+                  + Adicionar horário
+                </button>
+              </div>
+              {selectedScheduleTimes.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {selectedScheduleTimes.map((time) => (
+                    <button
+                      key={time}
+                      type="button"
+                      onClick={() =>
+                        setSelectedScheduleTimes((current) =>
+                          current.filter((item) => item !== time)
+                        )
+                      }
+                      className="px-3 py-1.5 rounded-full bg-purple-600 text-white text-sm hover:bg-red-500"
+                      title="Clique para remover"
+                    >
+                      {time} ×
+                    </button>
+                  ))}
+                </div>
+              )}
+              <button
+                type="button"
+                disabled={selectedScheduleTimes.length === 0}
+                onClick={() => {
+                  const next = new Map(timeInputs);
+                  messages.forEach((message) => {
+                    next.set(message.order, selectedScheduleTimes.join(', '));
+                  });
+                  setTimeInputs(next);
+                  toast.success('Horários aplicados à sequência inteira');
+                }}
+                className="mt-3 w-full bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 text-sm disabled:bg-gray-300"
+              >
+                Aplicar horários à sequência
+              </button>
+              <p className="text-xs text-purple-700 mt-2">
+                Em cada horário escolhido, todas as mensagens e arquivos serão enviados na ordem.
+              </p>
+            </div>
 
             {messages.map((msg, idx) => (
               <div key={idx} className="bg-gray-50 p-3 md:p-4 rounded-lg mb-4 border border-gray-200">

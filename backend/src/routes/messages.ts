@@ -5,6 +5,42 @@ import { uploadMedia } from '../middleware/upload';
 
 const router = Router();
 
+router.get('/attention', async (_req, res) => {
+  const messages = await prisma.message.findMany({
+    where: { direction: 'inbound', requiresAttention: true, attentionResolvedAt: null },
+    include: { contact: { select: { id: true, name: true, phone: true } } },
+    orderBy: { createdAt: 'desc' },
+  });
+  const conversations = Array.from(
+    messages.reduce((items, message) => {
+      const existing = items.get(message.contactId);
+      if (existing) existing.count += 1;
+      else items.set(message.contactId, {
+        contactId: message.contactId,
+        contact: message.contact,
+        count: 1,
+        latestMessage: message,
+      });
+      return items;
+    }, new Map<string, any>()).values()
+  );
+  res.json({ total: messages.length, conversations });
+});
+
+router.post('/attention/:contactId/resolve', async (req, res) => {
+  const result = await prisma.message.updateMany({
+    where: {
+      contactId: req.params.contactId,
+      direction: 'inbound',
+      attentionResolvedAt: null,
+    },
+    data: { attentionResolvedAt: new Date() },
+  });
+  const { ioRef } = await import('../services/whatsapp.service');
+  ioRef?.emit('attention:resolved', { contactId: req.params.contactId });
+  res.json({ resolved: result.count });
+});
+
 // GET /api/messages - Histórico geral
 router.get('/', async (req, res) => {
   const { contactId, direction, page = '1', limit = '50' } = req.query as Record<string, string>;
@@ -135,6 +171,16 @@ router.post('/send-to-contact', uploadMedia.single('media'), async (req, res) =>
       },
     });
 
+    await prisma.message.updateMany({
+      where: {
+        contactId: contact.id,
+        direction: 'inbound',
+        attentionResolvedAt: null,
+      },
+      data: { attentionResolvedAt: new Date() },
+    });
+    const { ioRef } = await import('../services/whatsapp.service');
+    ioRef?.emit('attention:resolved', { contactId: contact.id });
     res.json({ success: true, messageId: message.id, status: message.status });
   } catch (err: any) {
     console.error('[Messages Route] Erro ao enviar para contato:', err.message);

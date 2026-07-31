@@ -59,6 +59,11 @@ function detectChromiumPath(): string | undefined {
 // io será injetado após bootstrap para evitar dependência circular
 export let ioRef: any = null;
 export function setSocketIO(io: any) { ioRef = io; }
+export function getWhatsAppMessageId(msg: any): string {
+  return String(
+    msg?.id?._serialized || msg?.id?.id || msg?._data?.id?._serialized || ''
+  ).trim();
+}
 
 class WhatsAppService {
   private client: Client | null = null;
@@ -322,12 +327,13 @@ class WhatsAppService {
 
       const isFromMe = msg.fromMe;
       const remoteJid = isFromMe ? msg.to : msg.from;
-      const phone = remoteJid.replace('@c.us', '').replace('@g.us', '');
+      const phone = await this.resolveMessagePhone(msg, remoteJid);
 
       // Se a mensagem for MINHA (enviada pelo dono do número em qualquer lugar), pausa o robô
       if (isFromMe) {
         const { autoResponseService } = await import('./autoresponse.service');
         autoResponseService.registerManualMessage(message.contactId);
+        await this.resolveContactAttention(message.contactId);
         return; // Para o robô por aqui (não responde o que o dono mandou)
       }
 
@@ -348,15 +354,22 @@ class WhatsAppService {
       }
 
       // A função processIncomingMessage agora lida com o log se isEnabled for false
-      const handledByMenu = await autoResponseService.processIncomingMessage(message.contactId, phone, messageBody);
+      const handledByMenu = await autoResponseService.processIncomingMessage(
+        message.contactId,
+        phone,
+        messageBody,
+        msg.type,
+        remoteJid.endsWith('@g.us')
+      );
       if (handledByMenu) {
         return;
       }
 
       // OpenAI-powered auto-response (runs when enabled in AutoResponseConfig)
-      openaiAutoResponseService.getConfig().then(async (cfg) => {
-        if (!cfg.enabled) return;
-        try {
+      let handledByOpenAI = false;
+      try {
+        const cfg = await openaiAutoResponseService.getConfig();
+        if (cfg.enabled) {
           const waContact = await msg.getContact();
           const contactName = waContact.pushname || waContact.name || phone;
           const { response, type } = await openaiAutoResponseService.processMessage(
@@ -367,24 +380,198 @@ class WhatsAppService {
           );
           if (type === 'rule' && response) {
             await msg.reply(response);
+            handledByOpenAI = true;
             console.log(`[OpenAIAutoResponse] Sent rule response to ${msg.from}`);
           } else {
             console.log(`[OpenAIAutoResponse] No matching rule for ${msg.from}. Waiting for manual atendimento.`);
           }
-        } catch (err) {
-          console.error('[OpenAIAutoResponse] Error processing message:', err);
         }
-      }).catch(console.error);
+      } catch (err) {
+        console.error('[OpenAIAutoResponse] Error processing message:', err);
+      }
+
+      if (!handledByOpenAI && !remoteJid.endsWith('@g.us')) {
+        // updateMany com attentionResolvedAt:null torna a operação atômica:
+        // se uma resposta manual já resolveu esta mensagem enquanto a automação
+        // processava, ela não pode ser reaberta depois.
+        const marked = await prisma.message.updateMany({
+          where: {
+            id: message.id,
+            attentionResolvedAt: null,
+            requiresAttention: false,
+          },
+          data: { requiresAttention: true },
+        });
+        if (marked.count === 0) {
+          console.log(`[Atendimento] Mensagem de ${phone} já foi resolvida durante o processamento.`);
+          return;
+        }
+
+        const pendingMessage = await prisma.message.findUnique({
+          where: { id: message.id },
+          include: { contact: { select: { id: true, name: true, phone: true } } },
+        });
+        if (!pendingMessage || pendingMessage.attentionResolvedAt) return;
+
+        ioRef?.emit('attention:required', {
+          message: pendingMessage,
+          contact: pendingMessage.contact,
+        });
+
+        await this.sendPendingAttentionAlert({
+          name: pendingMessage.contact.name,
+          phone,
+          question: pendingMessage.body || messageBody,
+        });
+        console.log(`[Atendimento] Mensagem de ${phone} marcada para atendimento manual.`);
+      }
     } catch (err) {
       console.error('[WhatsApp] Erro ao processar mensagem:', err);
     }
   }
 
+  private async resolveContactAttention(contactId: string) {
+    const result = await prisma.message.updateMany({
+      where: {
+        contactId,
+        direction: 'inbound',
+        attentionResolvedAt: null,
+      },
+      data: { attentionResolvedAt: new Date() },
+    });
+    if (result.count > 0) {
+      ioRef?.emit('attention:resolved', { contactId });
+    }
+  }
+
+  private normalizeGroupName(name: string): string {
+    return name
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLowerCase();
+  }
+
+  private async sendPendingAttentionAlert(data: {
+    name: string;
+    phone: string;
+    question: string;
+  }): Promise<void> {
+    if (!this.client || !this.isReady) {
+      console.warn('[Atendimento] WhatsApp desconectado; aviso de pendencia nao enviado.');
+      return;
+    }
+
+    const targetName = 'pendencia';
+    let groupId: string | undefined;
+
+    try {
+      const savedGroups = await prisma.whatsAppGroup.findMany({
+        where: { active: true },
+        select: { groupId: true, name: true },
+      });
+      groupId = savedGroups.find(
+        (group) => this.normalizeGroupName(group.name) === targetName
+      )?.groupId;
+
+      // O fallback permite que o aviso funcione mesmo antes de o usuario clicar
+      // em "Sincronizar grupos" no painel.
+      if (!groupId) {
+        const chats = await this.client.getChats();
+        const liveGroup = chats.find(
+          (chat: any) =>
+            chat.isGroup && this.normalizeGroupName(String(chat.name || '')) === targetName
+        );
+        groupId = liveGroup?.id?._serialized;
+      }
+
+      if (!groupId) {
+        console.error('[Atendimento] Grupo "pendencia" nao encontrado no WhatsApp.');
+        return;
+      }
+
+      const alert = [
+        '*Nova mensagem pendente*',
+        '',
+        `*Nome:* ${data.name || 'Nao identificado'}`,
+        `*Numero:* ${data.phone || 'Nao identificado'}`,
+        `*Pergunta:* ${data.question || '[Midia sem texto]'}`,
+      ].join('\n');
+
+      await this.client.sendMessage(groupId, alert);
+      console.log(`[Atendimento] Aviso enviado ao grupo "pendencia" para ${data.phone}.`);
+    } catch (err: any) {
+      // A falha do aviso nao pode impedir que a mensagem continue marcada como
+      // pendente no sistema.
+      console.error('[Atendimento] Erro ao enviar aviso ao grupo "pendencia":', err?.message || err);
+    }
+  }
+
+  private async resolveMessagePhone(msg: any, remoteJid: string): Promise<string> {
+    const jidPhone = String(remoteJid || '').replace(/@(c\.us|g\.us|lid)$/, '');
+    if (!String(remoteJid).endsWith('@lid')) return jidPhone;
+
+    try {
+      const waContact = await msg.getContact();
+      const candidates = [
+        waContact?.number,
+        waContact?._data?.userid,
+        waContact?._data?.phoneNumber?.user,
+        waContact?._data?.phoneNumber?._serialized,
+        waContact?._data?.pnJid?.user,
+        waContact?._data?.pnJid?._serialized,
+      ];
+      for (const candidate of candidates) {
+        const value = String(candidate || '').replace(/@(c\.us|lid)$/, '').replace(/\D/g, '');
+        if (value.length >= 10 && value !== jidPhone) return value;
+      }
+    } catch {}
+
+    const page = (this.client as any)?.pupPage;
+    if (page) {
+      try {
+        const resolved = await page.evaluate(async (lid: string) => {
+          const browserWindow = globalThis as any;
+          try {
+            const pair = await browserWindow.WWebJS?.enforceLidAndPnRetrieval?.(lid);
+            const phone = pair?.phone || pair?.pn;
+            if (phone?._serialized || phone?.user) return phone._serialized || phone.user;
+          } catch {}
+
+          try {
+            const wid = browserWindow.require('WAWebWidFactory').createWid(lid);
+            const contact = await browserWindow.require('WAWebCollections').Contact.find(wid);
+            const phone = contact?.phoneNumber || contact?.pnJid || contact?.pn || contact?.userid;
+            return phone?._serialized || phone?.user || phone || null;
+          } catch {
+            return null;
+          }
+        }, remoteJid);
+
+        const value = String(resolved || '').replace(/@(c\.us|lid)$/, '').replace(/\D/g, '');
+        if (value.length >= 10 && value !== jidPhone) {
+          console.log(`[WhatsApp] LID resolvido para telefone terminado em ${value.slice(-4)}.`);
+          return value;
+        }
+      } catch (err) {
+        console.error('[WhatsApp] Não foi possível resolver o telefone do LID:', err);
+      }
+    }
+
+    console.log(`[WhatsApp] LID ${jidPhone} ainda sem telefone associado.`);
+    return jidPhone;
+  }
+
   private async persistMessage(msg: any, skipMedia: boolean = false) {
     try {
-      const whatsappId = msg.id._serialized;
-      const existing = await prisma.message.findFirst({ where: { whatsappId } });
-      if (existing) return existing;
+      // Algumas mensagens de contatos @lid não expõem _serialized. Nunca faça
+      // uma consulta Prisma com undefined, pois o filtro seria ignorado e uma
+      // mensagem antiga poderia ser reutilizada como se fosse a atual.
+      const whatsappId = getWhatsAppMessageId(msg);
+      if (whatsappId) {
+        const existing = await prisma.message.findFirst({ where: { whatsappId } });
+        if (existing) return existing;
+      }
 
       const isFromMe = msg.fromMe;
       const remoteJid = isFromMe ? msg.to : msg.from;
@@ -421,7 +608,7 @@ class WhatsAppService {
           type,
           body: msg.body || (isMedia ? '[Mídia]' : ''),
           mediaPath,
-          whatsappId,
+          whatsappId: whatsappId || null,
           status: 'sent',
           isRgData: type === 'image' && (msg.body?.toLowerCase().includes('rg') || msg.body?.toLowerCase().includes('documento')),
         },
@@ -581,50 +768,91 @@ class WhatsAppService {
   // ─── Grupos ─────────────────────────────────────────────────────────────
 
   async syncGroups() {
-    if (!this.isReady || !this.client) return;
-    if (this.isSyncingGroups) return;
+    if (!this.isReady || !this.client) throw new Error('WhatsApp não está conectado');
+    if (this.isSyncingGroups) throw new Error('A sincronização de grupos já está em andamento');
     this.isSyncingGroups = true;
 
     try {
-      let chats = await Promise.race([
-        this.client.getChats(),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('getChats timeout')), Number(process.env.WHATSAPP_SYNC_TIMEOUT_MS || 25000))
-        ),
-      ]);
+      let chats: Chat[] = [];
+      try {
+        chats = await Promise.race([
+          this.client.getChats(),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('getChats timeout')), Number(process.env.WHATSAPP_SYNC_TIMEOUT_MS || 25000))
+          ),
+        ]);
+      } catch (getChatsError) {
+        console.warn('[WhatsApp] getChats falhou. Usando leitura direta do navegador:', getChatsError);
+        const fallbackGroups = await this.getGroupsFromBrowserStore();
+        if (fallbackGroups.length === 0) {
+          throw new Error('O WhatsApp ainda não terminou de carregar os grupos. Tente novamente em alguns segundos.');
+        }
+        await this.replaceSyncedGroups(fallbackGroups);
+        console.log(`[WhatsApp] ${fallbackGroups.length} grupos sincronizados via leitura direta`);
+        return fallbackGroups.length;
+      }
 
       if (chats.length === 0) {
         console.log('[WhatsApp] getChats retornou vazio. Tentando fallback pelo Store do WhatsApp Web...');
         const fallbackGroups = await this.getGroupsFromBrowserStore();
-
-        for (const group of fallbackGroups) {
-          await prisma.whatsAppGroup.upsert({
-            where: { groupId: group.groupId },
-            update: { name: group.name, members: group.members },
-            create: { groupId: group.groupId, name: group.name, members: group.members, active: !group.archived },
-          });
+        if (fallbackGroups.length === 0) {
+          throw new Error('O WhatsApp ainda não terminou de carregar os grupos. Tente novamente em alguns segundos.');
         }
 
+        await this.replaceSyncedGroups(fallbackGroups);
         console.log(`[WhatsApp] ${fallbackGroups.length} grupos sincronizados via fallback`);
-        return;
+        return fallbackGroups.length;
       }
 
       const groups = chats.filter((c): c is GroupChat => c.isGroup);
-
-      for (const group of groups) {
-        await prisma.whatsAppGroup.upsert({
-          where: { groupId: group.id._serialized },
-          update: { name: group.name, members: group.participants?.length ?? 0 },
-          create: { groupId: group.id._serialized, name: group.name, members: group.participants?.length ?? 0, active: !group.archived },
-        });
-      }
+      await this.replaceSyncedGroups(
+        groups.map((group) => ({
+          groupId: group.id._serialized,
+          name: group.name,
+          members: group.participants?.length ?? 0,
+          archived: Boolean(group.archived),
+        }))
+      );
 
       console.log(`[WhatsApp] ${groups.length} grupos sincronizados`);
+      return groups.length;
     } catch (err) {
       console.error('[WhatsApp] Erro ao sincronizar grupos:', err);
+      throw err;
     } finally {
       this.isSyncingGroups = false;
     }
+  }
+
+  private async replaceSyncedGroups(
+    groups: Array<{ groupId: string; name: string; members: number; archived: boolean }>
+  ): Promise<void> {
+    const currentGroupIds = groups.map((group) => group.groupId);
+    const operations: any[] = [
+      prisma.whatsAppGroup.updateMany({
+        where: currentGroupIds.length > 0
+          ? { groupId: { notIn: currentGroupIds } }
+          : {},
+        data: { active: false },
+      }),
+      ...groups.map((group) =>
+        prisma.whatsAppGroup.upsert({
+          where: { groupId: group.groupId },
+          update: {
+            name: group.name,
+            members: group.members,
+            active: !group.archived,
+          },
+          create: {
+            groupId: group.groupId,
+            name: group.name,
+            members: group.members,
+            active: !group.archived,
+          },
+        })
+      ),
+    ];
+    await prisma.$transaction(operations);
   }
 
   private async getGroupsFromBrowserStore(): Promise<Array<{ groupId: string; name: string; members: number; archived: boolean }>> {
@@ -636,22 +864,35 @@ class WhatsAppService {
     try {
       return await page.evaluate(() => {
         const browserWindow = globalThis as any;
-        const store = browserWindow.Store;
-        const chatStore = store?.Chat;
+        let chatStore = browserWindow.Store?.Chat;
+
+        // Nas versoes atuais do WhatsApp Web a colecao de chats fica exposta
+        // pelo modulo WAWebCollections, e nao necessariamente em window.Store.
+        if (!chatStore && typeof browserWindow.require === 'function') {
+          try {
+            chatStore = browserWindow.require('WAWebCollections')?.Chat;
+          } catch {
+            // Mantem o fallback para window.Store abaixo.
+          }
+        }
+
         const chats = chatStore?.getModelsArray?.() || chatStore?.models || [];
 
         return chats
           .filter((chat: any) => {
             const id = chat?.id?._serialized || chat?.id?.toString?.() || '';
-            return chat?.isGroup || id.endsWith('@g.us');
+            return id.endsWith('@g.us');
           })
           .map((chat: any) => {
             const id = chat?.id?._serialized || chat?.id?.toString?.() || '';
-            const participants = chat?.groupMetadata?.participants || chat?.participants || [];
+            const participants = chat?.groupMetadata?.participants || chat?.participants;
+            const participantModels = participants?.getModelsArray?.() || participants?.models || participants || [];
             return {
               groupId: id,
               name: chat?.name || chat?.formattedTitle || chat?.contact?.name || id,
-              members: Array.isArray(participants) ? participants.length : 0,
+              members: Array.isArray(participantModels)
+                ? participantModels.length
+                : Number(participants?.size || participants?.length || 0),
               archived: Boolean(chat?.archive || chat?.archived),
             };
           })

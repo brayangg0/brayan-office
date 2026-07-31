@@ -4,6 +4,16 @@ import multer from 'multer';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
+const AUTOMATION_BLOCK_TAG = 'automacao_bloqueada';
+
+function parseContactTags(rawTags: string): string[] {
+  try {
+    const parsed = JSON.parse(rawTags || '[]');
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+}
 
 // GET /api/contacts
 router.get('/', async (req, res) => {
@@ -133,6 +143,23 @@ router.post('/', async (req, res) => {
     data: { name, phone: normalized, email, tags: JSON.stringify(tags || []), notes },
   });
   res.status(201).json(contact);
+});
+
+// POST /api/contacts/:id/automation-block
+router.post('/:id/automation-block', async (req, res) => {
+  const blocked = req.body?.blocked === true;
+  const current = await prisma.contact.findUnique({ where: { id: req.params.id } });
+  if (!current) return res.status(404).json({ error: 'Contato não encontrado' });
+
+  const tags = parseContactTags(current.tags).filter((tag) => tag !== AUTOMATION_BLOCK_TAG);
+  if (blocked) tags.push(AUTOMATION_BLOCK_TAG);
+
+  const contact = await prisma.contact.update({
+    where: { id: current.id },
+    data: { tags: JSON.stringify(tags) },
+  });
+
+  res.json({ contact, automationBlocked: blocked });
 });
 
 // PUT /api/contacts/:id

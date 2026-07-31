@@ -5,7 +5,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -130,6 +130,12 @@ model Message {
   // Dados de RG recebidos via mensagem
   isRgData    Boolean  @default(false)
   rgProcessed Boolean  @default(false)
+
+  // Atendimento manual quando nenhuma automacao encontrou uma resposta
+  requiresAttention   Boolean  @default(false)
+  attentionResolvedAt DateTime?
+
+  @@index([requiresAttention, attentionResolvedAt])
 }
 
 // ─── Templates de Mensagem ──────────────────────────────────────────────────
@@ -277,6 +283,7 @@ model SequenceMessage {
   // Repetição
   repeatDays    String    @default("[]") // JSON: ["seg", "ter", "qua", "qui", "sex", "sab", "dom"]
   repeatTimes   String    @default("[]") // JSON: ["09:00", "14:00", "18:30"]
+  lastSentAt    DateTime? // Último horário agendado já executado (evita duplicação após reinício)
 
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -300,7 +307,7 @@ model WhatsAppSession {
 model AutoResponseConfig {
   id            String   @id @default(cuid())
   enabled       Boolean  @default(true)
-  systemPrompt  String   @db.Text
+  systemPrompt  String
   temperature   Float    @default(0.7)
   maxTokens     Int      @default(150)
   createdAt     DateTime @default(now())
@@ -316,7 +323,7 @@ model AutoResponseRule {
   config    AutoResponseConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
 
   keyword   String
-  response  String   @db.Text
+  response  String
   priority  Int      @default(0)
   enabled   Boolean  @default(true)
 
@@ -349,7 +356,7 @@ model AutoResponseMessage {
   conversation     AutoResponseConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   role             String   // "user" or "assistant"
-  content          String   @db.Text
+  content          String
   requiresApproval Boolean  @default(false)
   approved         Boolean?
 
@@ -368,6 +375,8 @@ model AIAutoResponse {
   option3        String?
   option4        String?
   qaRules        String   @default("[]") // JSON: [{ question, answer }]
+  closingEnabled Boolean  @default(true)
+  closingMessage String   @default("😊 Ficamos felizes em ajudar!\nSe precisar de alguma coisa novamente, é só mandar uma mensagem.\nAté mais!")
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 }
@@ -379,5 +388,12 @@ model ConversationState {
   lastOption Int?     // Track which option user selected
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+}
+
+model AutomationBlockedPhone {
+  id        String   @id @default(uuid())
+  phone     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
 }
 

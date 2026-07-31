@@ -163,15 +163,25 @@ router.get('/contacts', async (_req, res) => {
 
 // GET /api/whatsapp/groups - Lista grupos sincronizados
 router.get('/groups', async (_req, res) => {
-  const groups = await prisma.whatsAppGroup.findMany({ orderBy: { name: 'asc' } });
+  const groups = await prisma.whatsAppGroup.findMany({
+    where: { active: true },
+    orderBy: { name: 'asc' },
+  });
   res.json(groups);
 });
 
 // POST /api/whatsapp/groups/sync - Sincroniza grupos do WhatsApp
 router.post('/groups/sync', async (_req, res) => {
-  await whatsappService.syncGroups();
-  const groups = await prisma.whatsAppGroup.findMany({ orderBy: { name: 'asc' } });
-  res.json({ message: `${groups.length} grupos sincronizados`, groups });
+  try {
+    const syncedCount = await whatsappService.syncGroups();
+    const groups = await prisma.whatsAppGroup.findMany({
+      where: { active: true },
+      orderBy: { name: 'asc' },
+    });
+    res.json({ message: `${syncedCount} grupos da conta atual sincronizados`, groups });
+  } catch (err: any) {
+    res.status(409).json({ error: err.message || 'Erro ao sincronizar grupos' });
+  }
 });
 
 // POST /api/whatsapp/chats/sync - Sincroniza contatos e mensagens antigas

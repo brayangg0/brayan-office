@@ -16,10 +16,23 @@ import {
   getAIAutoResponseConfig,
   enableAIAutoResponse,
   setAIAutoResponseOption,
+  setContactAutomationBlocked,
+  getAutomationBlockedPhones,
+  addAutomationBlockedPhone,
+  deleteAutomationBlockedPhone,
 } from '../services/api';
 import toast from 'react-hot-toast';
-import { Plus, Trash2, Send, Clock, MessageSquare, Zap, Edit2, Bot, Save, Eye } from 'lucide-react';
+import { Plus, Trash2, Send, Clock, MessageSquare, Zap, Edit2, Bot, Save, Eye, UserMinus, UserPlus } from 'lucide-react';
 import AutoResponse from './AutoResponse';
+
+function isAutomationBlocked(tags: string): boolean {
+  try {
+    const parsed = JSON.parse(tags || '[]');
+    return Array.isArray(parsed) && parsed.includes('automacao_bloqueada');
+  } catch {
+    return false;
+  }
+}
 
 export default function Automation() {
   const qc = useQueryClient();
@@ -64,10 +77,13 @@ export default function Automation() {
   // === AI AUTO-RESPONSE ===
   const DEFAULT_WELCOME = `Olá! 👋 Bem-vindo(a) ao nosso atendimento!\n\nPor favor, selecione uma das opções abaixo:\n\n1️⃣ Dúvidas Do Curso\n2️⃣ Suporte\n3️⃣ Segunda via\n4️⃣ Outros Assuntos\n\nResponda apenas com o número desejado.`;
 
+  const DEFAULT_CLOSING = `😊 Ficamos felizes em ajudar!\nSe precisar de alguma coisa novamente, é só mandar uma mensagem.\nAté mais!`;
   const [aiEnabled, setAiEnabled] = useState(false);
   const [aiWelcome, setAiWelcome] = useState(DEFAULT_WELCOME);
   const [aiOptions, setAiOptions] = useState({ 1: '', 2: '', 3: '', 4: '' });
   const [aiQaRules, setAiQaRules] = useState<{ question: string; answer: string }[]>([]);
+  const [closingEnabled, setClosingEnabled] = useState(true);
+  const [closingMessage, setClosingMessage] = useState(DEFAULT_CLOSING);
   const [showAiPreview, setShowAiPreview] = useState(false);
 
   const { data: aiConfig } = useQuery({
@@ -86,6 +102,8 @@ export default function Automation() {
         4: aiConfig.options?.[4] || '',
       });
       setAiQaRules(Array.isArray(aiConfig.qaRules) ? aiConfig.qaRules : []);
+      setClosingEnabled(aiConfig.closingEnabled ?? true);
+      setClosingMessage(aiConfig.closingMessage || DEFAULT_CLOSING);
     }
   }, [aiConfig]);
 
@@ -96,6 +114,8 @@ export default function Automation() {
         enabled: aiEnabled,
         welcomeMessage: aiWelcome,
         qaRules: aiQaRules,
+        closingEnabled,
+        closingMessage,
       });
       // Save each option response
       const optionEntries = ([1, 2, 3, 4] as const);
@@ -122,11 +142,54 @@ export default function Automation() {
   });
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
+  const [automationBlockSearch, setAutomationBlockSearch] = useState('');
+  const [blockedPhone, setBlockedPhone] = useState('');
+  const [blockedPhoneName, setBlockedPhoneName] = useState('');
 
   const { data: campaigns } = useQuery({ queryKey: ['automation-campaigns'], queryFn: getAutomationCampaigns });
   const { data: contacts } = useQuery({ queryKey: ['contacts', { limit: 1000 }], queryFn: () => getContacts({ limit: 1000 }) });
   const { data: groups } = useQuery({ queryKey: ['groups'], queryFn: getGroups });
   const { data: courses } = useQuery({ queryKey: ['courses'], queryFn: getCourses });
+  const { data: blockedPhones = [] } = useQuery({
+    queryKey: ['automation-blocked-phones'],
+    queryFn: getAutomationBlockedPhones,
+  });
+
+  const addBlockedPhoneMut = useMutation({
+    mutationFn: () => addAutomationBlockedPhone({ phone: blockedPhone, name: blockedPhoneName }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['automation-blocked-phones'] });
+      setBlockedPhone('');
+      setBlockedPhoneName('');
+      toast.success('Número bloqueado para mensagens automáticas');
+    },
+    onError: (err: any) =>
+      toast.error(err.response?.data?.error || 'Informe um número válido com DDD'),
+  });
+
+  const deleteBlockedPhoneMut = useMutation({
+    mutationFn: deleteAutomationBlockedPhone,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['automation-blocked-phones'] });
+      toast.success('Número removido da lista de bloqueio');
+    },
+    onError: () => toast.error('Erro ao remover o número'),
+  });
+
+  const automationBlockMut = useMutation({
+    mutationFn: ({ id, blocked }: { id: string; blocked: boolean }) =>
+      setContactAutomationBlocked(id, blocked),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ['contacts'] });
+      toast.success(
+        variables.blocked
+          ? 'Contato adicionado à lista de bloqueio'
+          : 'Contato removido da lista de bloqueio'
+      );
+    },
+    onError: (err: any) =>
+      toast.error(err.response?.data?.error || 'Erro ao alterar o bloqueio do contato'),
+  });
 
   const createCampaignMut = useMutation({
     mutationFn: async () => {
@@ -181,6 +244,20 @@ export default function Automation() {
       toast.success('Campanha deletada!');
     },
   });
+
+  const contactList = contacts?.contacts || [];
+  const blockedAutomationContacts = contactList.filter((contact: any) =>
+    isAutomationBlocked(contact.tags)
+  );
+  const normalizedBlockSearch = automationBlockSearch.trim().toLowerCase();
+  const availableAutomationContacts = contactList
+    .filter((contact: any) => !isAutomationBlocked(contact.tags))
+    .filter((contact: any) =>
+      !normalizedBlockSearch ||
+      contact.name.toLowerCase().includes(normalizedBlockSearch) ||
+      contact.phone.includes(normalizedBlockSearch)
+    )
+    .slice(0, 8);
 
   return (
     <div className="p-4 md:p-6 space-y-4 md:space-y-6">
@@ -417,6 +494,165 @@ export default function Automation() {
             <p className="text-gray-500 text-sm mb-5">
               Quando ativado, o sistema envia automaticamente a mensagem de boas-vindas com o menu de opções para novos contatos. Ao responder com 1, 2, 3 ou 4, o contato recebe a resposta correspondente.
             </p>
+
+            <div className="border border-red-100 bg-red-50/30 rounded-xl p-4 mb-5">
+              <div className="flex items-start gap-3 mb-4">
+                <UserMinus size={20} className="text-red-500 mt-0.5" />
+                <div>
+                  <h3 className="font-semibold text-gray-800">Contatos sem mensagens automáticas</h3>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Eles continuam aparecendo no atendimento, mas não recebem menu nem respostas automáticas.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2 mb-3">
+                <input
+                  className="input bg-white"
+                  value={blockedPhone}
+                  onChange={(event) => setBlockedPhone(event.target.value)}
+                  placeholder="Número com DDD (ex: 61999999999)"
+                  inputMode="tel"
+                />
+                <input
+                  className="input bg-white"
+                  value={blockedPhoneName}
+                  onChange={(event) => setBlockedPhoneName(event.target.value)}
+                  placeholder="Nome ou observação (opcional)"
+                />
+                <button
+                  type="button"
+                  className="btn-primary flex items-center justify-center gap-2"
+                  disabled={addBlockedPhoneMut.isPending || blockedPhone.replace(/\D/g, '').length < 10}
+                  onClick={() => addBlockedPhoneMut.mutate()}
+                >
+                  <Plus size={15} />
+                  Adicionar número
+                </button>
+              </div>
+
+              {(blockedPhones as any[]).length > 0 && (
+                <div className="border bg-white rounded-lg divide-y mb-4 max-h-64 overflow-y-auto">
+                  {(blockedPhones as any[]).map((item: any) => (
+                    <div key={item.id} className="flex items-center justify-between gap-3 p-3">
+                      <div className="min-w-0">
+                        <p className="font-medium truncate">{item.name || 'Número não salvo nos contatos'}</p>
+                        <p className="text-xs text-gray-500">{item.phone}</p>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn-secondary text-xs text-green-700 flex items-center gap-1 shrink-0"
+                        disabled={deleteBlockedPhoneMut.isPending}
+                        onClick={() => deleteBlockedPhoneMut.mutate(item.id)}
+                      >
+                        <UserPlus size={14} />
+                        Permitir
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <p className="text-xs font-semibold text-gray-500 mb-2">
+                Ou escolha um contato já salvo:
+              </p>
+              <input
+                className="input mb-3 bg-white"
+                value={automationBlockSearch}
+                onChange={(event) => setAutomationBlockSearch(event.target.value)}
+                placeholder="Buscar contato pelo nome ou telefone"
+              />
+
+              {automationBlockSearch.trim() && (
+                <div className="border bg-white rounded-lg divide-y mb-4 max-h-64 overflow-y-auto">
+                  {availableAutomationContacts.length > 0 ? (
+                    availableAutomationContacts.map((contact: any) => (
+                      <div key={contact.id} className="flex items-center justify-between gap-3 p-3">
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{contact.name}</p>
+                          <p className="text-xs text-gray-500">{contact.phone}</p>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn-secondary text-xs text-red-600 flex items-center gap-1 shrink-0"
+                          disabled={automationBlockMut.isPending}
+                          onClick={() => {
+                            automationBlockMut.mutate({ id: contact.id, blocked: true });
+                            setAutomationBlockSearch('');
+                          }}
+                        >
+                          <UserMinus size={14} />
+                          Bloquear
+                        </button>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-gray-500 p-3">Nenhum contato disponível encontrado.</p>
+                  )}
+                </div>
+              )}
+
+              <p className="text-sm font-semibold mb-2">
+                Lista bloqueada ({blockedAutomationContacts.length})
+              </p>
+              {blockedAutomationContacts.length > 0 ? (
+                <div className="border bg-white rounded-lg divide-y max-h-64 overflow-y-auto">
+                  {blockedAutomationContacts.map((contact: any) => (
+                    <div key={contact.id} className="flex items-center justify-between gap-3 p-3">
+                      <div className="min-w-0">
+                        <p className="font-medium truncate">{contact.name}</p>
+                        <p className="text-xs text-gray-500">{contact.phone}</p>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn-secondary text-xs text-green-700 flex items-center gap-1 shrink-0"
+                        disabled={automationBlockMut.isPending}
+                        onClick={() => automationBlockMut.mutate({ id: contact.id, blocked: false })}
+                      >
+                        <UserPlus size={14} />
+                        Permitir
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400 bg-white rounded-lg p-3">
+                  Nenhum contato bloqueado. Use a busca acima para adicionar.
+                </p>
+              )}
+            </div>
+
+            <div className="border border-green-200 bg-green-50/40 rounded-xl p-4 mb-5">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div>
+                  <h3 className="font-semibold text-gray-800">Mensagem de encerramento</h3>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Enviada quando a pessoa disser “obrigado”, “era só isso”, “até mais” ou indicar que o problema foi resolvido.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setClosingEnabled(!closingEnabled)}
+                  className={`relative w-12 h-6 rounded-full shrink-0 transition-colors ${closingEnabled ? 'bg-green-500' : 'bg-gray-300'}`}
+                  title={closingEnabled ? 'Desativar encerramento' : 'Ativar encerramento'}
+                >
+                  <span
+                    className={`absolute top-1 left-0 w-4 h-4 bg-white rounded-full shadow transition-transform ${closingEnabled ? 'translate-x-7' : 'translate-x-1'}`}
+                  />
+                </button>
+              </div>
+              <textarea
+                className="input text-sm bg-white resize-y"
+                rows={4}
+                value={closingMessage}
+                onChange={(event) => setClosingMessage(event.target.value)}
+                disabled={!closingEnabled}
+                placeholder="Digite a mensagem de despedida"
+              />
+              <p className="text-xs text-green-700 mt-2">
+                Funciona apenas em conversas privadas, respeita a lista de bloqueio e não repete a despedida na mesma conversa.
+              </p>
+            </div>
 
             {/* Welcome Message */}
             <div className="space-y-4">

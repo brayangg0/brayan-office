@@ -64,15 +64,20 @@ function normalizeMenuText(text: string): string {
     .trim();
 }
 
-function extractMenuOption(message: string): number | null {
+export function extractMenuOption(message: string): number | null {
   const normalized = normalizeMenuText(message);
   const compact = normalized.replace(/\s+/g, '');
 
   const directMatch = compact.match(/^(?:opcao|op|alternativa|numero|n)?([1-4])$/);
   if (directMatch) return Number(directMatch[1]);
 
-  const looseMatch = normalized.match(/\b(?:opcao|op|alternativa|numero|n)?\s*([1-4])\b/);
-  if (looseMatch) return Number(looseMatch[1]);
+  // Em frases maiores, só considera uma escolha quando o usuário escreve
+  // explicitamente "opção", "alternativa" ou "número". Assim, quantidades
+  // como "dá para fazer 1 máquina?" não são confundidas com a opção 1.
+  const explicitMatch = normalized.match(
+    /\b(?:opcao|op|alternativa|numero|n)\s*([1-4])\b/
+  );
+  if (explicitMatch) return Number(explicitMatch[1]);
 
   const wordOptions: Record<string, number> = {
     um: 1,
@@ -91,7 +96,12 @@ function extractMenuOption(message: string): number | null {
   };
 
   for (const [word, option] of Object.entries(wordOptions)) {
-    if (new RegExp(`\\b${word}\\b`).test(normalized)) return option;
+    if (
+      normalized === word ||
+      new RegExp(`^(?:opcao|op|alternativa|numero|n)\\s+${word}$`).test(normalized)
+    ) {
+      return option;
+    }
   }
 
   return null;
@@ -115,6 +125,32 @@ function isMenuRequest(message: string): boolean {
   ].some((trigger) => fuzzyMatchPhrase(normalized, trigger));
 }
 
+export function isClosingMessage(message: string): boolean {
+  const normalized = normalizeMenuText(message);
+  if (!normalized) return false;
+
+  if (/\b(mas|porem|ainda|outra|tenho duvida|nao resolveu|nao consegui|preciso)\b/.test(normalized)) {
+    return false;
+  }
+
+  return [
+    'obrigado',
+    'obrigada',
+    'muito obrigado',
+    'muito obrigada',
+    'valeu',
+    'era so isso',
+    'e so isso',
+    'ate mais',
+    'tchau',
+    'resolveu meu problema',
+    'problema resolvido',
+    'consegui resolver',
+    'deu certo',
+    'nao preciso de mais nada',
+  ].some((phrase) => fuzzyMatchPhrase(normalized, phrase));
+}
+
 function parseQaRules(rawRules: string | null | undefined): { question: string; answer: string }[] {
   try {
     const parsed = JSON.parse(rawRules || '[]');
@@ -131,8 +167,68 @@ function parseQaRules(rawRules: string | null | undefined): { question: string; 
   }
 }
 
-function findQaAnswer(message: string, rawRules: string | null | undefined): string | null {
+const QA_STOP_WORDS = new Set([
+  'a', 'o', 'as', 'os', 'e', 'de', 'da', 'do', 'das', 'dos', 'em', 'na', 'no',
+  'um', 'uma', 'que', 'qual', 'quais', 'como', 'sobre', 'me', 'fala', 'falar',
+  'gostaria', 'queria', 'quero', 'saber', 'tem', 'vai', 'ser', 'eh', 'dia',
+  // "aula" e "curso" aparecem em quase todas as perguntas e não definem a intenção.
+  'aula', 'curso',
+]);
+
+const QA_SYNONYM_GROUPS = [
+  ['local', 'lugar', 'endereco', 'onde', 'localizacao'],
+  ['data', 'quando', 'dia'],
+  ['horario', 'hora'],
+  ['preco', 'valor', 'custa', 'custo', 'pagamento'],
+  ['pratica', 'pratico', 'praticas'],
+  ['teoria', 'teorica', 'teorico'],
+];
+
+function qaIntentWords(text: string): string[] {
+  return normalizeMenuText(text)
+    .split(' ')
+    .filter((word) => word.length > 1 && !QA_STOP_WORDS.has(word));
+}
+
+function qaWordsMatch(left: string, right: string): boolean {
+  if (left === right) return true;
+
+  const group = QA_SYNONYM_GROUPS.find((items) => items.includes(left));
+  if (group?.includes(right)) return true;
+
+  const allowedTypos = Math.min(left.length, right.length) <= 6 ? 1 : 2;
+  return left.length > 3 && right.length > 3 && levenshtein(left, right) <= allowedTypos;
+}
+
+function scoreQaVariant(message: string, variant: string): number {
+  if (fuzzyMatchPhrase(message, variant)) return 100;
+
+  const messageWords = qaIntentWords(message);
+  const variantWords = qaIntentWords(variant);
+  if (messageWords.length === 0 || variantWords.length === 0) return 0;
+
+  const matchedMessageWords = messageWords.filter((messageWord) =>
+    variantWords.some((variantWord) => qaWordsMatch(messageWord, variantWord))
+  ).length;
+  const messageCoverage = matchedMessageWords / messageWords.length;
+  const ruleCoverage = matchedMessageWords / variantWords.length;
+
+  // Mensagens curtas como "e a prática?" são aceitas quando a palavra principal
+  // identifica a regra. Em mensagens maiores, exigimos que a maior parte da
+  // intenção enviada também esteja presente para evitar respostas aleatórias.
+  if (messageCoverage === 1 && matchedMessageWords >= 1) {
+    return Math.round(80 + ruleCoverage * 15);
+  }
+  if (messageCoverage >= 0.67 && matchedMessageWords >= 2) {
+    return Math.round(70 + messageCoverage * 15);
+  }
+
+  return 0;
+}
+
+export function findQaAnswer(message: string, rawRules: string | null | undefined): string | null {
   const rules = parseQaRules(rawRules);
+  let bestMatch: { answer: string; score: number } | null = null;
 
   for (const rule of rules) {
     const variants = rule.question
@@ -140,12 +236,17 @@ function findQaAnswer(message: string, rawRules: string | null | undefined): str
       .map((item) => item.trim())
       .filter(Boolean);
 
-    if (variants.some((variant) => fuzzyMatchPhrase(message, variant))) {
-      return rule.answer;
+    const score = variants.reduce(
+      (best, variant) => Math.max(best, scoreQaVariant(message, variant)),
+      0
+    );
+
+    if (score >= 70 && (!bestMatch || score > bestMatch.score)) {
+      bestMatch = { answer: rule.answer, score };
     }
   }
 
-  return null;
+  return bestMatch?.answer || null;
 }
 
 interface AutoResponseRule {
@@ -173,6 +274,8 @@ class AutoResponseService {
   private contactPhones: Map<string, string> = new Map();
   private MANUAL_PAUSE_MS = 10 * 60 * 1000; // 10 minutos de pausa
   private aiMenuSent: Map<string, boolean> = new Map();
+  private recentClosings: Map<string, number> = new Map();
+  private readonly closingCooldownMs = 6 * 60 * 60 * 1000;
 
   async initialize() {
     console.log('[AutoResponse] Inicializando serviço de autorresposta...');
@@ -246,7 +349,13 @@ class AutoResponseService {
   /**
    * Processa mensagem de entrada e responde se houver match
    */
-  async processIncomingMessage(contactId: string, phone: string, message: string): Promise<boolean> {
+  async processIncomingMessage(
+    contactId: string,
+    phone: string,
+    message: string,
+    messageType?: string,
+    isGroup = false
+  ): Promise<boolean> {
     try {
       console.log(`[AutoResponse] Processando mensagem: "${message}" de ${phone}`);
 
@@ -268,8 +377,84 @@ class AutoResponseService {
         return false;
       }
 
+      let contactTags: string[] = [];
+      try {
+        const parsedTags = JSON.parse(contact.tags || '[]');
+        contactTags = Array.isArray(parsedTags) ? parsedTags.map(String) : [];
+      } catch {
+        contactTags = [];
+      }
+
+      if (contactTags.includes('automacao_bloqueada')) {
+        console.log(`[AutoResponse] Automação bloqueada para ${contact.name}. Mensagem mantida para atendimento manual.`);
+        // Impede também o segundo mecanismo de resposta automática.
+        return true;
+      }
+
+      const normalizedPhone = phone.replace(/\D/g, '');
+      const phoneVariants = new Set([normalizedPhone]);
+      if (normalizedPhone.length === 10 || normalizedPhone.length === 11) {
+        phoneVariants.add(`55${normalizedPhone}`);
+      }
+      if (
+        (normalizedPhone.length === 12 || normalizedPhone.length === 13) &&
+        normalizedPhone.startsWith('55')
+      ) {
+        phoneVariants.add(normalizedPhone.slice(2));
+      }
+
+      // O WhatsApp pode identificar celulares brasileiros no formato antigo,
+      // sem o nono dígito. Comparamos as duas representações automaticamente.
+      for (const variant of Array.from(phoneVariants)) {
+        const localPhone = variant.startsWith('55') ? variant.slice(2) : variant;
+        if (localPhone.length === 11 && localPhone.charAt(2) === '9') {
+          const withoutNinthDigit = `${localPhone.slice(0, 2)}${localPhone.slice(3)}`;
+          phoneVariants.add(withoutNinthDigit);
+          phoneVariants.add(`55${withoutNinthDigit}`);
+        } else if (localPhone.length === 10) {
+          const withNinthDigit = `${localPhone.slice(0, 2)}9${localPhone.slice(2)}`;
+          phoneVariants.add(withNinthDigit);
+          phoneVariants.add(`55${withNinthDigit}`);
+        }
+      }
+
+      const blockedPhone = await prisma.automationBlockedPhone.findFirst({
+        where: { phone: { in: Array.from(phoneVariants) } },
+      });
+      if (blockedPhone) {
+        console.log(`[AutoResponse] Automação bloqueada para o número ${normalizedPhone}.`);
+        return true;
+      }
+
+      if (!isGroup && (messageType === 'audio' || messageType === 'ptt')) {
+        await whatsappService.sendText(
+          normalizedPhone,
+          'Olá! No momento não consigo ouvir mensagens de áudio. Por favor, digite sua mensagem para que eu possa ajudar.'
+        );
+        console.log(`[AutoResponse] Aviso de áudio enviado para ${normalizedPhone}.`);
+        return true;
+      }
+
       // Check if AI Auto-Response is enabled (runs independently of global automation toggle)
       const aiConfig = await (prisma as any).aIAutoResponse.findUnique({ where: { id: 'default' } });
+      const closingMessageDetected = isClosingMessage(message);
+      if (!isGroup && aiConfig?.closingEnabled && closingMessageDetected) {
+        const lastClosing = this.recentClosings.get(contactId) || 0;
+        if (Date.now() - lastClosing < this.closingCooldownMs) {
+          console.log(`[AutoResponse] Despedida repetida ignorada para ${normalizedPhone}.`);
+          return true;
+        }
+
+        await whatsappService.sendText(normalizedPhone, aiConfig.closingMessage);
+        this.recentClosings.set(contactId, Date.now());
+        console.log(`[AutoResponse] Mensagem de encerramento enviada para ${normalizedPhone}.`);
+        return true;
+      }
+
+      if (!closingMessageDetected) {
+        this.recentClosings.delete(contactId);
+      }
+
       if (aiConfig?.enabled) {
         const aiResult = await this.handleAIAutoResponse(contactId, phone, message);
         if (aiResult) {
