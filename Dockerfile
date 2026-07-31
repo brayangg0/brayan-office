@@ -23,6 +23,9 @@ RUN npm ci
 
 # Copia o código fonte e faz o build
 COPY backend/ ./
+# O desenvolvimento local usa SQLite. No Railway, a imagem utiliza o banco
+# PostgreSQL já configurado no serviço, sem alterar o schema local.
+RUN sed -i 's/provider = "sqlite"/provider = "postgresql"/' prisma/schema.prisma
 RUN npx prisma generate
 RUN npm run build
 
