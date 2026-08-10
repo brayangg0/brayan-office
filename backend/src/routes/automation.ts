@@ -464,6 +464,7 @@ router.post('/ai-response/handle-message', async (req, res) => {
     const trimmed = message.trim();
     const optionNumber = parseInt(trimmed, 10);
     const isValidOption = [1, 2, 3, 4].includes(optionNumber);
+    const existingState = await prisma.conversationState.findUnique({ where: { contactId } });
 
     if (isValidOption) {
       // User selected a menu option — send the corresponding response
@@ -471,8 +472,7 @@ router.post('/ai-response/handle-message', async (req, res) => {
       const optionResponse = config[fieldName];
 
       if (!optionResponse) {
-        await whatsappService.sendText(contact.phone, config.welcomeMessage);
-        return res.json({ action: 'welcome_sent', reason: 'option_not_configured' });
+        return res.json({ action: 'ignored', reason: 'option_not_configured' });
       }
 
       await whatsappService.sendText(contact.phone, optionResponse);
@@ -485,7 +485,7 @@ router.post('/ai-response/handle-message', async (req, res) => {
       });
 
       return res.json({ action: 'option_response_sent', option: optionNumber });
-    } else {
+    } else if (!existingState) {
       // Not a valid option — send the welcome message
       await whatsappService.sendText(contact.phone, config.welcomeMessage);
 
@@ -497,6 +497,8 @@ router.post('/ai-response/handle-message', async (req, res) => {
       });
 
       return res.json({ action: 'welcome_sent' });
+    } else {
+      return res.json({ action: 'ignored', reason: 'welcome_already_sent' });
     }
   } catch (err: any) {
     res.status(500).json({ error: err.message });

@@ -590,14 +590,20 @@ class WhatsAppService {
       let type = msg.type as string;
 
       if (isMedia && !skipMedia) {
-        const media = await msg.downloadMedia();
-        if (media) {
-          const ext = media.mimetype.split('/')[1]?.split(';')[0] || 'bin';
-          const filename = `${Date.now()}_${contact.id}.${ext}`;
-          const dest = path.join(this.baseUploads, 'media', filename);
-          if (!fs.existsSync(path.dirname(dest))) fs.mkdirSync(path.dirname(dest), { recursive: true });
-          fs.writeFileSync(dest, Buffer.from(media.data, 'base64'));
-          mediaPath = `/uploads/media/${filename}`;
+        try {
+          const media = await msg.downloadMedia();
+          if (media) {
+            const ext = media.mimetype.split('/')[1]?.split(';')[0] || 'bin';
+            const filename = `${Date.now()}_${contact.id}.${ext}`;
+            const dest = path.join(this.baseUploads, 'media', filename);
+            if (!fs.existsSync(path.dirname(dest))) fs.mkdirSync(path.dirname(dest), { recursive: true });
+            fs.writeFileSync(dest, Buffer.from(media.data, 'base64'));
+            mediaPath = `/uploads/media/${filename}`;
+          }
+        } catch (mediaError) {
+          // A falha no download não pode impedir o registro da mensagem nem a
+          // resposta automática que orienta o aluno a escrever sua dúvida.
+          console.error('[WhatsApp] Não foi possível baixar a mídia; continuando sem o arquivo:', mediaError);
         }
       }
 

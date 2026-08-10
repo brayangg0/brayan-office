@@ -107,24 +107,6 @@ export function extractMenuOption(message: string): number | null {
   return null;
 }
 
-function isMenuRequest(message: string): boolean {
-  const normalized = normalizeMenuText(message);
-  return [
-    'menu',
-    'opcoes',
-    'opcao',
-    'atendimento',
-    'ajuda',
-    'ola',
-    'oi',
-    'bom dia',
-    'boa tarde',
-    'boa noite',
-    'voltar',
-    'inicio',
-  ].some((trigger) => fuzzyMatchPhrase(normalized, trigger));
-}
-
 export function isClosingMessage(message: string): boolean {
   const normalized = normalizeMenuText(message);
   if (!normalized) return false;
@@ -171,6 +153,8 @@ const QA_STOP_WORDS = new Set([
   'a', 'o', 'as', 'os', 'e', 'de', 'da', 'do', 'das', 'dos', 'em', 'na', 'no',
   'um', 'uma', 'que', 'qual', 'quais', 'como', 'sobre', 'me', 'fala', 'falar',
   'gostaria', 'queria', 'quero', 'saber', 'tem', 'vai', 'ser', 'eh', 'dia',
+  'para', 'pra', 'pro', 'por', 'favor', 'oq', 'fazer', 'faco', 'meu', 'minha',
+  'fica', 'ficam',
   // "aula" e "curso" aparecem em quase todas as perguntas e não definem a intenção.
   'aula', 'curso',
 ]);
@@ -179,7 +163,13 @@ const QA_SYNONYM_GROUPS = [
   ['local', 'lugar', 'endereco', 'onde', 'localizacao'],
   ['data', 'quando', 'dia'],
   ['horario', 'hora'],
-  ['preco', 'valor', 'custa', 'custo', 'pagamento'],
+  ['preco', 'valor', 'custa', 'custar', 'custo', 'quanto', 'pagamento', 'pagar', 'investimento'],
+  ['inscricao', 'inscrever', 'inscrevo', 'matricula', 'matricular', 'cadastro', 'cadastrar', 'participar'],
+  ['requisito', 'requisitos', 'necessario', 'necessarios', 'precisa', 'preciso', 'exigencia', 'exigencias'],
+  ['documento', 'documentos', 'documentacao', 'rg', 'cpf'],
+  ['certificado', 'certificacao', 'diploma'],
+  ['duracao', 'tempo', 'demora', 'carga', 'horas'],
+  ['online', 'ead', 'remoto', 'virtual', 'distancia'],
   ['pratica', 'pratico', 'praticas'],
   ['teoria', 'teorica', 'teorico'],
 ];
@@ -193,8 +183,20 @@ function qaIntentWords(text: string): string[] {
 function qaWordsMatch(left: string, right: string): boolean {
   if (left === right) return true;
 
-  const group = QA_SYNONYM_GROUPS.find((items) => items.includes(left));
-  if (group?.includes(right)) return true;
+  // Primeiro localiza o grupo mesmo quando uma palavra veio com erro de digitação
+  // (por exemplo: "inscrevr", "matriculla" ou "documetos").
+  const exactLeftGroup = QA_SYNONYM_GROUPS.find((items) => items.includes(left));
+  const fuzzyLeftGroup = QA_SYNONYM_GROUPS.find((items) =>
+    items.some((item) => {
+      const allowedTypos = Math.min(left.length, item.length) <= 6 ? 1 : 2;
+      return left.length > 3 && levenshtein(left, item) <= allowedTypos;
+    })
+  );
+  const leftGroup = exactLeftGroup || fuzzyLeftGroup;
+  if (leftGroup?.some((item) => {
+    const allowedTypos = Math.min(right.length, item.length) <= 6 ? 1 : 2;
+    return right === item || (right.length > 3 && levenshtein(right, item) <= allowedTypos);
+  })) return true;
 
   const allowedTypos = Math.min(left.length, right.length) <= 6 ? 1 : 2;
   return left.length > 3 && right.length > 3 && levenshtein(left, right) <= allowedTypos;
@@ -207,11 +209,31 @@ function scoreQaVariant(message: string, variant: string): number {
   const variantWords = qaIntentWords(variant);
   if (messageWords.length === 0 || variantWords.length === 0) return 0;
 
-  const matchedMessageWords = messageWords.filter((messageWord) =>
-    variantWords.some((variantWord) => qaWordsMatch(messageWord, variantWord))
-  ).length;
+  // Uma pergunta salva pode se resumir a um conceito (ex.: "valor"). Aceita
+  // frases como "quanto custa?" quando todas as palavras relevantes apontam
+  // para esse mesmo conceito.
+  if (
+    variantWords.length === 1 &&
+    messageWords.every((messageWord) => qaWordsMatch(messageWord, variantWords[0]))
+  ) {
+    return 90;
+  }
+
+  // Faz correspondência um-para-um. Isso impede que duas palavras parecidas da
+  // mensagem contem como se fossem dois conceitos diferentes da pergunta salva.
+  const usedVariantWords = new Set<number>();
+  let matchedMessageWords = 0;
+  for (const messageWord of messageWords) {
+    const matchIndex = variantWords.findIndex(
+      (variantWord, index) => !usedVariantWords.has(index) && qaWordsMatch(messageWord, variantWord)
+    );
+    if (matchIndex >= 0) {
+      usedVariantWords.add(matchIndex);
+      matchedMessageWords++;
+    }
+  }
   const messageCoverage = matchedMessageWords / messageWords.length;
-  const ruleCoverage = matchedMessageWords / variantWords.length;
+  const ruleCoverage = usedVariantWords.size / variantWords.length;
 
   // Mensagens curtas como "e a prática?" são aceitas quando a palavra principal
   // identifica a regra. Em mensagens maiores, exigimos que a maior parte da
@@ -221,6 +243,12 @@ function scoreQaVariant(message: string, variant: string): number {
   }
   if (messageCoverage >= 0.67 && matchedMessageWords >= 2) {
     return Math.round(70 + messageCoverage * 15);
+  }
+
+  // Perguntas reformuladas podem ter palavras adicionais, mas ainda cobrir quase
+  // toda a intenção cadastrada. Ex.: "o que preciso para me inscrever?".
+  if (ruleCoverage >= 0.67 && matchedMessageWords >= 2) {
+    return Math.round(70 + ruleCoverage * 15);
   }
 
   return 0;
@@ -426,17 +454,40 @@ class AutoResponseService {
         return true;
       }
 
-      if (!isGroup && (messageType === 'audio' || messageType === 'ptt')) {
+      // A automação de mídia funciona independentemente do botão global, assim
+      // como o menu configurado nesta tela.
+      const aiConfig = await (prisma as any).aIAutoResponse.findUnique({ where: { id: 'default' } });
+      const normalizedMessageType = String(messageType || '').trim().toLowerCase();
+      const isAudioMessage = ['audio', 'ptt', 'voice', 'voice_message'].includes(normalizedMessageType);
+      if (!isGroup && isAudioMessage) {
         await whatsappService.sendText(
           normalizedPhone,
-          'Olá! No momento não consigo ouvir mensagens de áudio. Por favor, digite sua mensagem para que eu possa ajudar.'
+          'Olá! No momento não consigo ouvir o áudio. Por favor, digite a sua dúvida para que eu possa ajudar.'
         );
         console.log(`[AutoResponse] Aviso de áudio enviado para ${normalizedPhone}.`);
         return true;
       }
 
+      const isUnsupportedMedia = [
+        'image', 'album', 'video', 'document', 'sticker', 'gif', 'location',
+        'vcard', 'multi_vcard', 'contact_card', 'contacts_array', 'product', 'order', 'payment',
+      ].includes(normalizedMessageType);
+      if (!isGroup && isUnsupportedMedia) {
+        const existingState = await (prisma as any).conversationState.findUnique({ where: { contactId } });
+
+        // No primeiro contato, deixa o fluxo normal enviar o menu padrão.
+        // Depois disso, a mídia recebe uma orientação sem repetir o menu.
+        if (!aiConfig?.enabled || existingState) {
+          await whatsappService.sendText(
+            normalizedPhone,
+            'Olá! No momento não consigo analisar essa mídia. Por favor, digite a sua dúvida para que eu possa ajudar.'
+          );
+          console.log(`[AutoResponse] Aviso de mídia enviado para ${normalizedPhone}.`);
+          return true;
+        }
+      }
+
       // Check if AI Auto-Response is enabled (runs independently of global automation toggle)
-      const aiConfig = await (prisma as any).aIAutoResponse.findUnique({ where: { id: 'default' } });
       const closingMessageDetected = isClosingMessage(message);
       if (!isGroup && aiConfig?.closingEnabled && closingMessageDetected) {
         const lastClosing = this.recentClosings.get(contactId) || 0;
@@ -583,7 +634,7 @@ class AutoResponseService {
       const isValidOption = optionNumber !== null && [1, 2, 3, 4].includes(optionNumber);
       const existingState = await (prisma as any).conversationState.findUnique({ where: { contactId } });
       const hasReceivedMenu = this.aiMenuSent.get(contactId) || !!existingState;
-      const shouldSendMenu = !hasReceivedMenu || isMenuRequest(message);
+      const shouldSendMenu = !hasReceivedMenu;
 
       if (isValidOption) {
         // User selected a valid option
@@ -591,8 +642,7 @@ class AutoResponseService {
         const optionResponse = config[fieldName];
 
         if (!optionResponse) {
-          await whatsappService.sendText(phone, config.welcomeMessage);
-          this.aiMenuSent.set(contactId, true);
+          // O menu é enviado somente uma vez; uma opção vazia não deve repeti-lo.
           return true;
         }
 
@@ -631,8 +681,8 @@ class AutoResponseService {
         this.lastBotResponseTime.set(contactId, Date.now());
         return true;
       } else {
-        // Menu already sent and user sent invalid text - don't respond
-        return false;
+        // Consome a mensagem para impedir que o menu legado seja enviado como fallback.
+        return true;
       }
 
     } catch (err) {
