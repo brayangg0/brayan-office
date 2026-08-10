@@ -301,7 +301,8 @@ class AutoResponseService {
   private followUpSent: Map<string, boolean> = new Map();
   private contactPhones: Map<string, string> = new Map();
   private MANUAL_PAUSE_MS = 10 * 60 * 1000; // 10 minutos de pausa
-  private aiMenuSent: Map<string, boolean> = new Map();
+  private aiMenuSent: Map<string, number> = new Map();
+  private readonly aiMenuSessionMs = 6 * 60 * 60 * 1000;
   private recentClosings: Map<string, number> = new Map();
   private readonly closingCooldownMs = 6 * 60 * 60 * 1000;
 
@@ -474,10 +475,14 @@ class AutoResponseService {
       ].includes(normalizedMessageType);
       if (!isGroup && isUnsupportedMedia) {
         const existingState = await (prisma as any).conversationState.findUnique({ where: { contactId } });
+        const lastInteractionAt = existingState?.updatedAt
+          ? new Date(existingState.updatedAt).getTime()
+          : 0;
+        const hasActiveMediaSession = Date.now() - lastInteractionAt < this.aiMenuSessionMs;
 
         // No primeiro contato, deixa o fluxo normal enviar o menu padrão.
         // Depois disso, a mídia recebe uma orientação sem repetir o menu.
-        if (!aiConfig?.enabled || existingState) {
+        if (!aiConfig?.enabled || hasActiveMediaSession) {
           await whatsappService.sendText(
             normalizedPhone,
             'Olá! No momento não consigo analisar essa mídia. Por favor, digite a sua dúvida para que eu possa ajudar.'
@@ -633,7 +638,14 @@ class AutoResponseService {
       const optionNumber = extractMenuOption(message);
       const isValidOption = optionNumber !== null && [1, 2, 3, 4].includes(optionNumber);
       const existingState = await (prisma as any).conversationState.findUnique({ where: { contactId } });
-      const hasReceivedMenu = this.aiMenuSent.get(contactId) || !!existingState;
+      const now = Date.now();
+      const menuSentInMemoryAt = this.aiMenuSent.get(contactId) || 0;
+      const persistedInteractionAt = existingState?.updatedAt
+        ? new Date(existingState.updatedAt).getTime()
+        : 0;
+      const hasReceivedMenu =
+        now - menuSentInMemoryAt < this.aiMenuSessionMs ||
+        now - persistedInteractionAt < this.aiMenuSessionMs;
       const shouldSendMenu = !hasReceivedMenu;
 
       if (isValidOption) {
@@ -669,7 +681,7 @@ class AutoResponseService {
         await whatsappService.sendText(phone, config.welcomeMessage);
 
         // Mark that menu has been sent
-        this.aiMenuSent.set(contactId, true);
+        this.aiMenuSent.set(contactId, now);
 
         // Reset conversation state
         await (prisma as any).conversationState.upsert({

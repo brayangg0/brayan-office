@@ -465,6 +465,8 @@ router.post('/ai-response/handle-message', async (req, res) => {
     const optionNumber = parseInt(trimmed, 10);
     const isValidOption = [1, 2, 3, 4].includes(optionNumber);
     const existingState = await prisma.conversationState.findUnique({ where: { contactId } });
+    const interactionAt = existingState?.updatedAt?.getTime() || 0;
+    const welcomeAlreadySentInSession = Date.now() - interactionAt < 6 * 60 * 60 * 1000;
 
     if (isValidOption) {
       // User selected a menu option — send the corresponding response
@@ -485,7 +487,7 @@ router.post('/ai-response/handle-message', async (req, res) => {
       });
 
       return res.json({ action: 'option_response_sent', option: optionNumber });
-    } else if (!existingState) {
+    } else if (!welcomeAlreadySentInSession) {
       // Not a valid option — send the welcome message
       await whatsappService.sendText(contact.phone, config.welcomeMessage);
 
