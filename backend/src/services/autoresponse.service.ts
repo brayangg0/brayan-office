@@ -460,7 +460,7 @@ class AutoResponseService {
       const aiConfig = await (prisma as any).aIAutoResponse.findUnique({ where: { id: 'default' } });
       const normalizedMessageType = String(messageType || '').trim().toLowerCase();
       const isAudioMessage = ['audio', 'ptt', 'voice', 'voice_message'].includes(normalizedMessageType);
-      if (!isGroup && isAudioMessage) {
+      if (!isGroup && aiConfig?.enabled && isAudioMessage) {
         await whatsappService.sendText(
           normalizedPhone,
           'Olá! No momento não consigo ouvir o áudio. Por favor, digite a sua dúvida para que eu possa ajudar.'
@@ -473,7 +473,7 @@ class AutoResponseService {
         'image', 'album', 'video', 'document', 'sticker', 'gif', 'location',
         'vcard', 'multi_vcard', 'contact_card', 'contacts_array', 'product', 'order', 'payment',
       ].includes(normalizedMessageType);
-      if (!isGroup && isUnsupportedMedia) {
+      if (!isGroup && aiConfig?.enabled && isUnsupportedMedia) {
         const existingState = await (prisma as any).conversationState.findUnique({ where: { contactId } });
         const lastInteractionAt = existingState?.updatedAt
           ? new Date(existingState.updatedAt).getTime()
@@ -494,7 +494,7 @@ class AutoResponseService {
 
       // Check if AI Auto-Response is enabled (runs independently of global automation toggle)
       const closingMessageDetected = isClosingMessage(message);
-      if (!isGroup && aiConfig?.closingEnabled && closingMessageDetected) {
+      if (!isGroup && aiConfig?.enabled && aiConfig.closingEnabled && closingMessageDetected) {
         const lastClosing = this.recentClosings.get(contactId) || 0;
         if (Date.now() - lastClosing < this.closingCooldownMs) {
           console.log(`[AutoResponse] Despedida repetida ignorada para ${normalizedPhone}.`);
